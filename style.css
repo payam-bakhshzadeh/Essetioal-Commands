@@ -1,0 +1,215 @@
+/* ===============================
+   BASE LAYOUT
+================================ */
+
+html,
+body {
+    background: #0a0a0a;
+    color: #dedede;
+    font-family: "LiterationMono Nerd Font Mono", "JetBrains Mono", monospace;
+    line-height: 1.75;
+    margin: 0;
+    padding: 0;
+}
+
+#content {
+    max-width: 900px;
+    margin: auto;
+    padding: 80px;
+    padding-bottom: 140px;
+    /* فضای کافی در انتهای صفحه برای ترمینال */
+}
+
+/* ===============================
+   TYPOGRAPHY
+================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+    color: #eeeeee;
+    page-break-after: avoid;
+}
+
+p {
+    orphans: 3;
+    widows: 3;
+}
+
+a {
+    color: #ffffff;
+    text-decoration: none;
+}
+
+/* ===============================
+   CODE
+================================ */
+
+code {
+    background: #111111;
+    color: #d0d0d0;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+pre {
+    background: #111111;
+    padding: 24px;
+    overflow-x: auto;
+    border: 1px solid #222222;
+    page-break-inside: avoid;
+    position: relative;
+}
+
+pre code {
+    background: none;
+    color: #999999;
+    padding: 0;
+}
+
+/* استایل کامنت‌های داخل بلوک کد */
+pre code .comment {
+    color: #868585;
+    font-style: italic;
+    font-size: small;
+    opacity: 0.8;
+}
+
+/* دکمه کپی */
+.copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #222222;
+    color: #888888;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.copy-btn:hover,
+.copy-btn:focus {
+    background: #333333;
+    color: #ffffff;
+    border-color: #00ff66;
+    /* هایلایت زبرجدی/سبز هنگام فوکوس با کیبورد */
+}
+
+.copy-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* ===============================
+   TERMINAL SEARCH BAR
+================================ */
+
+#terminal-search {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 40px);
+    max-width: 860px;
+    background: #000000;
+    border: 1px solid #333333;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    border-radius: 6px;
+    z-index: 9999;
+    font-family: inherit;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#terminal-search.hidden {
+    display: none;
+}
+
+.terminal-header {
+    background: #111111;
+    padding: 6px 16px;
+    border-bottom: 1px solid #222222;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #666666;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+.terminal-body {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+}
+
+.terminal-body .prompt {
+    color: #00ff66;
+    font-weight: bold;
+    margin-right: 12px;
+}
+
+#search-input {
+    background: transparent;
+    border: none;
+    color: #00ff66;
+    font-family: inherit;
+    font-size: 15px;
+    width: 100%;
+    outline: none;
+}
+
+/* ===============================
+   BLOCK ELEMENTS & PRINT CONTROL
+================================ */
+
+blockquote {
+    border-left: 4px solid #444444;
+    padding-left: 20px;
+    color: #d0d0d0;
+}
+
+mark {
+    background: #444444;
+    color: #ffffff;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #222222;
+    margin: 60px 0;
+}
+
+@page {
+    size: A4;
+    margin: 20mm;
+}
+
+@media print {
+
+    html,
+    body {
+        background: #0a0a0a !important;
+        color: #999999 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    pre,
+    code {
+        -webkit-print-color-adjust: exact;
+    }
+
+    .copy-btn,
+    #terminal-search {
+        display: none !important;
+    }
+}

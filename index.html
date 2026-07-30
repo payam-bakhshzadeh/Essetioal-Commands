@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PAYAM Simple Dark – Print Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="content">
+
+        <p>Create new local repository</p>
+        <pre class="git"><code>git init</code></pre>
+        <p>Check status</p>
+        <pre class="git"><code>git status</code></pre>
+        <p>Add to Staging Area</p>
+        <pre class="git"><code>git add .</code></pre>
+        <p>Commit changes</p>
+        <pre class="git"><code>git commit -m &quot;comment&quot;</code></pre>
+        <p>Connecting local repository to GitHub repository</p>
+        <pre class="git"><code>git remote add origin github-repository-link</code></pre>
+        <p>Check connection status</p>
+        <pre class="git"><code>git remote -v</code></pre>
+        <p>Push changes to GitHub</p>
+        <pre class="git"><code># first time
+git push -u origin main</code></pre>
+        <pre class="git"><code># next times
+git push</code></pre>
+        <pre class="git"><code># force push
+git push --force</code></pre>
+
+
+
+        <!-- content div     -->
+    </div>
+
+    <!-- Terminal Search Bar Overlay -->
+    <div id="terminal-search" class="hidden">
+        <div class="terminal-header">
+            <span>Terminal Search (Ctrl + /)</span>
+            <span id="search-count">0 items found</span>
+        </div>
+        <div class="terminal-body">
+            <span class="prompt">&gt;</span>
+            <input type="text" id="search-input" placeholder="Type to search live... Press Enter to focus result"
+                autocomplete="off" />
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
