@@ -110,6 +110,19 @@ pre code .comment {
 }
 
 /* ===============================
+   SEARCH ITEM (search/filter unit)
+================================ */
+
+/* The search-item div wraps each description + code block so live
+   filtering can hide whole units. Margins are zeroed on the wrapper so
+   the inner <p> / <pre> margins collapse exactly like before the wrapper
+   was introduced — visual layout is preserved. */
+.search-item {
+    margin: 0;
+    padding: 0;
+}
+
+/* ===============================
    TERMINAL SEARCH BAR
 ================================ */
 
