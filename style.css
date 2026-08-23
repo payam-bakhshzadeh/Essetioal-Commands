@@ -15,9 +15,7 @@ body {
 #content {
     max-width: 900px;
     margin: auto;
-    padding: 80px;
-    padding-bottom: 140px;
-    /* فضای کافی در انتهای صفحه برای ترمینال */
+    padding: 24px 80px 80px;
 }
 
 /* ===============================
@@ -57,7 +55,9 @@ code {
 pre {
     background: #111111;
     padding: 24px;
-    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
     border: 1px solid #222222;
     page-break-inside: avoid;
     position: relative;
@@ -67,6 +67,8 @@ pre code {
     background: none;
     color: #999999;
     padding: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 /* استایل کامنت‌های داخل بلوک کد */
@@ -99,7 +101,7 @@ pre code .comment {
 .copy-btn:focus {
     background: #333333;
     color: #ffffff;
-    border-color: #00ff66;
+    border-color: #8413A9;
     /* هایلایت زبرجدی/سبز هنگام فوکوس با کیبورد */
 }
 
@@ -110,40 +112,21 @@ pre code .comment {
 }
 
 /* ===============================
-   SEARCH ITEM (search/filter unit)
-================================ */
-
-/* The search-item div wraps each description + code block so live
-   filtering can hide whole units. Margins are zeroed on the wrapper so
-   the inner <p> / <pre> margins collapse exactly like before the wrapper
-   was introduced — visual layout is preserved. */
-.search-item {
-    margin: 0;
-    padding: 0;
-}
-
-/* ===============================
    TERMINAL SEARCH BAR
 ================================ */
 
 #terminal-search {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: sticky;
+    top: 0;
+    z-index: 9999;
     width: calc(100% - 40px);
-    max-width: 860px;
+    max-width: 900px;
+    margin: 0 auto 24px;
     background: #000000;
     border: 1px solid #333333;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
     border-radius: 6px;
-    z-index: 9999;
     font-family: inherit;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-#terminal-search.hidden {
-    display: none;
 }
 
 .terminal-header {
@@ -165,7 +148,7 @@ pre code .comment {
 }
 
 .terminal-body .prompt {
-    color: #00ff66;
+    color: #8413A9;
     font-weight: bold;
     margin-right: 12px;
 }
@@ -173,7 +156,7 @@ pre code .comment {
 #search-input {
     background: transparent;
     border: none;
-    color: #00ff66;
+    color: rgb(222, 222, 222);
     font-family: inherit;
     font-size: 15px;
     width: 100%;
@@ -222,7 +205,142 @@ hr {
     }
 
     .copy-btn,
-    #terminal-search {
+    #terminal-search,
+    #editor-modal {
         display: none !important;
     }
+}
+
+/* ===============================
+   SEARCH HIGHLIGHT
+================================ */
+
+mark.search-hit {
+    background: #530B69;
+    color: #ffffff;
+    border-radius: 2px;
+}
+
+/* ===============================
+   ADD / EDIT MODAL
+================================ */
+
+#editor-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+#editor-modal.hidden {
+    display: none;
+}
+
+.modal-box {
+    background: #0d0d0d;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #222222;
+}
+
+.modal-header span {
+    color: #eeeeee;
+    font-size: 15px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #888888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.modal-close:hover,
+.modal-close:focus {
+    color: #ffffff;
+}
+
+.modal-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+
+.modal-body label {
+    color: #888888;
+    font-size: 12px;
+}
+
+.modal-body input,
+.modal-body textarea {
+    background: #111111;
+    border: 1px solid #333333;
+    color: #dedede;
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    resize: vertical;
+}
+
+.modal-body input:focus,
+.modal-body textarea:focus {
+    border-color: #8413A9;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 12px 16px;
+    border-top: 1px solid #222222;
+}
+
+.modal-btn {
+    background: #222222;
+    color: #dddddd;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.modal-btn:hover,
+.modal-btn:focus {
+    border-color: #333333;
+}
+
+.modal-btn.primary {
+    background: #222222;
+    color: #ffffff;
+    border-color: #333333;
+}
+
+.modal-btn.danger {
+    background: #222222;
+    color: #ffffff;
+    border-color: #333333;
 }

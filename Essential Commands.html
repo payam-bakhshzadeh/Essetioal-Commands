@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PAYAM Simple Dark – Print Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Search bar: always visible at the top, no shortcut needed -->
+    <div id="terminal-search">
+        <div class="terminal-header">
+            <span>Search · Ctrl+I new · Ctrl+E edit · Del delete</span>
+            <span id="search-count">0 sections</span>
+        </div>
+        <div class="terminal-body">
+            <span class="prompt">></span>
+            <input type="text" id="search-input"
+                placeholder="Type to search…  Tab / ↑↓ to switch · Enter to copy · Esc to clear"
+                autocomplete="off" />
+        </div>
+    </div>
+
+    <div id="content">
+
+<h2 id="venv">.venv</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>.venv\Scripts\activate</span></code></pre></div>
+<h2 id="photo">1 Photo</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>python demos\demo_reconstruct.py <span class="op">-</span>i <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">Payam</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">DECA_input&quot;</span> <span class="op">-</span>s <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">Payam</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">DECA_input</span><span class="ch">\r</span><span class="st">esults&quot;</span> <span class="op">--</span>device cuda <span class="op">--</span>rasterizer_type standard <span class="op">--</span>saveVis <span class="va">True</span> <span class="op">--</span>saveObj <span class="va">True</span> <span class="op">--</span>saveMat <span class="va">True</span></span></code></pre></div>
+<h2 id="folder">folder</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a> demos\demo_reconstruct.py <span class="op">-</span>i <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">YourName</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">my_photos&quot;</span> <span class="op">-</span>s <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">YourName</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">my_photos</span><span class="ch">\r</span><span class="st">esults&quot;</span> <span class="op">--</span>device cuda <span class="op">--</span>rasterizer_type standard <span class="op">--</span>saveVis <span class="va">True</span> <span class="op">--</span>saveObj <span class="va">True</span></span></code></pre></div>
+
+<h2 id="git">git</h2>
+<pre class="git"><code>git init</code></pre>
+<pre class="git"><code>git add .</code></pre>
+<pre class="git"><code>git commit -m &quot;comment&quot;</code></pre>
+<pre class="git"><code>git push origin main</code></pre>
+
+
+
+        <!-- content div     -->
+    </div>
+
+    <!-- Add / Edit Section Modal -->
+    <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-heading-label">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span id="modal-title">Add new section</span>
+                <button id="modal-close" class="modal-close" type="button" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <label id="modal-heading-label" for="modal-heading">Title</label>
+                <input type="text" id="modal-heading" placeholder="e.g. git commands" autocomplete="off" />
+                <label for="modal-commands">Commands (one per line)</label>
+                <textarea id="modal-commands" rows="6" spellcheck="false"
+                    placeholder="git init&#10;git add .&#10;git commit -m &quot;message&quot;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-save" class="modal-btn primary" type="button">Save</button>
+                <button id="modal-delete" class="modal-btn danger" type="button" hidden>Delete section</button>
+                <button id="modal-cancel" class="modal-btn" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
