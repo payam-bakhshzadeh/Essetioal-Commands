@@ -12,13 +12,13 @@
     <!-- Search bar: always visible at the top, no shortcut needed -->
     <div id="terminal-search">
         <div class="terminal-header">
-            <span>Search · Ctrl+I new · Ctrl+E edit · Del delete</span>
+            <span>Search · Ctrl+I new · Ctrl+E edit · Del delete · #tag to search tags</span>
             <span id="search-count">0 sections</span>
         </div>
         <div class="terminal-body">
             <span class="prompt">></span>
             <input type="text" id="search-input"
-                placeholder="Type to search…  Tab / ↑↓ to switch · Enter to copy · Esc to clear"
+                placeholder="Type to search titles &amp; content…  type #tag to search tags · Tab / ↑↓ to switch · Enter to copy · Esc to clear"
                 autocomplete="off" />
         </div>
     </div>
@@ -56,6 +56,12 @@
                 <label for="modal-commands">Commands (one per line)</label>
                 <textarea id="modal-commands" rows="6" spellcheck="false"
                     placeholder="git init&#10;git add .&#10;git commit -m &quot;message&quot;"></textarea>
+                <label for="modal-command-tags">Per-command tags (optional, one line per command)</label>
+                <textarea id="modal-command-tags" rows="3" spellcheck="false"
+                    placeholder="Line 1 tags: &#35;init&#10;Line 2 tags: (leave empty)&#10;Line 3 tags: commit"></textarea>
+                <label for="modal-tags">Section tags (comma separated)</label>
+                <input type="text" id="modal-tags" placeholder="git, python, deployment"
+                    autocomplete="off" spellcheck="false" />
             </div>
             <div class="modal-footer">
                 <button id="modal-save" class="modal-btn primary" type="button">Save</button>

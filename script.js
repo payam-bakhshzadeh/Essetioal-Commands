@@ -41,9 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalDelete = document.getElementById('modal-delete');
     const modalCancel = document.getElementById('modal-cancel');
     const modalClose = document.getElementById('modal-close');
+    const modalTags = document.getElementById('modal-tags');
+    const modalCommandTags = document.getElementById('modal-command-tags');
 
     if (!content || !searchInput || !searchCount || !editorModal ||
-        !modalHeading || !modalCommands || !modalSave || !modalDelete) {
+        !modalHeading || !modalCommands || !modalSave || !modalDelete || !modalTags || !modalCommandTags) {
         console.error('Required elements not found', { content, searchInput, searchCount, editorModal });
         return;
     }
@@ -115,6 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 units.push(current);
                 return;
             }
+            if (el.classList && (el.classList.contains('section-tags') || el.classList.contains('command-tags'))) {
+                ensureCurrent(el);
+                return;
+            }
             if (ATOMIC_TAGS.has(el.tagName)) {
                 ensureCurrent(el);
                 return;
@@ -134,11 +140,114 @@ document.addEventListener('DOMContentLoaded', () => {
         return units;
     }
 
-    function unitText(unit) {
-        const parts = [];
-        if (unit.heading) parts.push(unit.heading.textContent);
-        for (const el of unit.body) parts.push(el.textContent);
-        return parts.join(' ').toLowerCase();
+    // ------------------------------------------------------------------
+    // Alphabetical sorting (Feature: re-order sections by title)
+    // ------------------------------------------------------------------
+    function compareSectionTitles(a, b) {
+        return String(a).localeCompare(String(b), undefined, {
+            sensitivity: 'base',
+            numeric: true
+        });
+    }
+
+    // Physically re-order the sections inside #content so they stay in
+    // alphabetical order after edits / additions. Items without a heading
+    // (leading fragments) sink to the top.
+    function reorderSections() {
+        const units = collectUnits(content);
+        const sorted = units
+            .map(u => ({
+                heading: u.heading,
+                body: u.body,
+                title: u.heading ? u.heading.textContent.trim() : ''
+            }))
+            .sort((a, b) => compareSectionTitles(a.title, b.title));
+
+        units.forEach(u => {
+            if (u.heading) u.heading.remove();
+            u.body.forEach(el => el.remove());
+        });
+
+        const frag = document.createDocumentFragment();
+        sorted.forEach(u => {
+            if (u.heading) frag.appendChild(u.heading);
+            u.body.forEach(el => frag.appendChild(el));
+        });
+        content.appendChild(frag);
+    }
+
+    // ------------------------------------------------------------------
+    // Tag helpers
+    // ------------------------------------------------------------------
+    // "git, PYTHON, docker" -> ["git", "python", "docker"]  (# stripped)
+    function parseTags(str) {
+        return String(str || '')
+            .split(/[\s,،]+/)
+            .map(s => s.trim().replace(/^#+/, ''))
+            .filter(Boolean);
+    }
+
+    function getUnitTags(unit) {
+        if (!unit.heading) return [];
+        const raw = unit.heading.getAttribute('data-tags') || '';
+        return raw.split(',').map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase());
+    }
+
+    // The visible <span class="tag-chip"> elements belonging to a unit.
+    function getTagElementsInUnit(unit) {
+        const els = [];
+        unit.body.forEach(el => {
+            if (!el.classList) return;
+            if (el.classList.contains('tag-chip')) {
+                els.push(el);
+            } else if (el.classList.contains('section-tags') || el.classList.contains('command-tags')) {
+                els.push(...Array.from(el.querySelectorAll('.tag-chip')));
+            }
+        });
+        return els;
+    }
+
+    // ------------------------------------------------------------------
+    // Per-command tagging helpers
+    // ------------------------------------------------------------------
+    // Every command <pre> (rendered by renderSection) carries
+    //   data-command-index  -> its position inside the section
+    //   data-command-tags   -> its own comma-separated tags
+    function collectCommandInfo(unit) {
+        const out = [];
+        unit.body.forEach(el => {
+            if (el.tagName !== 'PRE') return;
+            const idx = el.dataset && el.dataset.commandIndex;
+            if (idx === undefined) return; // static commands have no per-command info
+            out.push({
+                idx: Number(idx),
+                tags: (el.getAttribute('data-command-tags') || '')
+                    .split(',').map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase())
+            });
+        });
+        out.sort((a, b) => a.idx - b.idx);
+        return out;
+    }
+
+    // The <span class="tag-chip"> elements shown under a specific command.
+    function getCommandChipEls(unit, index) {
+        for (const el of unit.body) {
+            if (el.classList && el.classList.contains('command-tags')
+                && Number(el.dataset.commandIndex) === index) {
+                return Array.from(el.querySelectorAll('.tag-chip'));
+            }
+        }
+        return [];
+    }
+
+    // Show/hide one specific command (<pre> + its tag chips).
+    function setCommandVisible(unit, index, visible) {
+        const display = visible ? '' : 'none';
+        unit.body.forEach(el => {
+            if (el.dataset && Number(el.dataset.commandIndex) === index) {
+                el.style.display = display;
+            }
+        });
     }
 
     function setUnitVisible(unit, visible) {
@@ -172,12 +281,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function applyHighlightsToUnit(unit, ql) {
-        const roots = [];
-        if (unit.heading) roots.push(unit.heading);
-        roots.push(...unit.body);
-
-        roots.forEach(root => {
+    function highlightTextInElements(elements, term) {
+        elements.forEach(root => {
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
             const textNodes = [];
             while (walker.nextNode()) {
@@ -187,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             textNodes.forEach(node => {
                 const lower = node.nodeValue.toLowerCase();
-                let idx = lower.indexOf(ql);
+                let idx = lower.indexOf(term);
                 if (idx === -1) return;
                 const frag = document.createDocumentFragment();
                 let last = 0;
@@ -197,10 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     const mark = document.createElement('mark');
                     mark.className = 'search-hit';
-                    mark.textContent = node.nodeValue.slice(idx, idx + ql.length);
+                    mark.textContent = node.nodeValue.slice(idx, idx + term.length);
                     frag.appendChild(mark);
-                    last = idx + ql.length;
-                    idx = lower.indexOf(ql, last);
+                    last = idx + term.length;
+                    idx = lower.indexOf(term, last);
                 }
                 if (last < node.nodeValue.length) {
                     frag.appendChild(document.createTextNode(node.nodeValue.slice(last)));
@@ -211,26 +316,67 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Filtering
+    // Filtering (smart search)
+    //   - plain query  -> matched against section TITLES and CONTENT
+    //   - query beginning with "#" -> matched against section TAGS
+    //     * a section-level tag match shows the WHOLE section
+    //     * otherwise individual commands that carry that tag are shown
     // ------------------------------------------------------------------
     function filterItems(query) {
         clearHighlights();
         const units = collectUnits(content);
         const q = (query || '').trim();
-        const ql = q.toLowerCase();
+        const isTagSearch = q.startsWith('#');
+        const term = (isTagSearch ? q.slice(1) : q).trim().toLowerCase();
         let visible = 0;
 
-        if (ql === '') {
+        if (term === '') {
             units.forEach(u => setUnitVisible(u, true));
             visible = units.length;
         } else {
             units.forEach(u => {
-                const matches = unitText(u).includes(ql);
-                setUnitVisible(u, matches);
-                if (matches) {
-                    visible++;
-                    applyHighlightsToUnit(u, ql);
+                let matches = false;
+                if (isTagSearch) {
+                    const sectionTagMatch = getUnitTags(u).some(t => t.includes(term));
+                    if (sectionTagMatch) {
+                        // The section itself is tagged -> show it completely.
+                        matches = true;
+                        setUnitVisible(u, true);
+                        highlightTextInElements(getTagElementsInUnit(u), term);
+                    } else {
+                        // Filter the individual commands of this section.
+                        // Start from everything hidden, then re-show the
+                        // commands that carry the searched tag.
+                        setUnitVisible(u, false);
+                        const commands = collectCommandInfo(u);
+                        let anyVisible = false;
+                        commands.forEach(ci => {
+                            const cmdMatch = ci.tags.some(t => t.includes(term));
+                            if (cmdMatch) {
+                                anyVisible = true;
+                                setCommandVisible(u, ci.idx, true);
+                                highlightTextInElements(getCommandChipEls(u, ci.idx), term);
+                            }
+                        });
+                        // Keep the heading as a group label if any command matches.
+                        if (u.heading) u.heading.style.display = anyVisible ? '' : 'none';
+                        matches = anyVisible;
+                    }
+                } else {
+                    // Plain search: match against the title OR the command/code
+                    // content of the section. Highlight every occurrence.
+                    const title = u.heading ? u.heading.textContent.toLowerCase() : '';
+                    const contentText = u.body.map(el => el.textContent).join(' ').toLowerCase();
+                    matches = title.includes(term) || contentText.includes(term);
+                    if (matches) {
+                        const targets = [];
+                        if (u.heading) targets.push(u.heading);
+                        targets.push(...u.body);
+                        highlightTextInElements(targets, term);
+                    }
+                    setUnitVisible(u, matches);
                 }
+                if (matches) visible++;
             });
         }
 
@@ -331,20 +477,52 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function renderSection(key, title, commands) {
+    function renderSection(key, title, commands, tags, commandTags) {
         const frag = document.createDocumentFragment();
         const h = document.createElement('h2');
         h.textContent = title;
         h.setAttribute('data-section-key', key);
+        if (tags && tags.length) h.setAttribute('data-tags', tags.join(','));
         frag.appendChild(h);
-        (commands || []).forEach(cmd => {
+
+        if (tags && tags.length) {
+            const wrap = document.createElement('div');
+            wrap.className = 'section-tags';
+            wrap.setAttribute('data-section-key', key);
+            tags.forEach(t => {
+                const span = document.createElement('span');
+                span.className = 'tag-chip';
+                span.textContent = '#' + t;
+                wrap.appendChild(span);
+            });
+            frag.appendChild(wrap);
+        }
+
+        (commands || []).forEach((cmd, i) => {
+            const ctags = (commandTags || [])[i] || [];
             const pre = document.createElement('pre');
             pre.className = 'user-command';
             pre.setAttribute('data-section-key', key);
+            pre.setAttribute('data-command-index', String(i));
+            if (ctags.length) pre.setAttribute('data-command-tags', ctags.join(','));
             const code = document.createElement('code');
             code.textContent = cmd;
             pre.appendChild(code);
             frag.appendChild(pre);
+
+            if (ctags.length) {
+                const wrap = document.createElement('div');
+                wrap.className = 'command-tags';
+                wrap.setAttribute('data-section-key', key);
+                wrap.setAttribute('data-command-index', String(i));
+                ctags.forEach(t => {
+                    const span = document.createElement('span');
+                    span.className = 'tag-chip';
+                    span.textContent = '#' + t;
+                    wrap.appendChild(span);
+                });
+                frag.appendChild(wrap);
+            }
         });
         return frag;
     }
@@ -353,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const els = Array.from(content.querySelectorAll(`[data-section-key="${key}"]`));
         if (els.length === 0) return;
         const first = els[0];
-        const frag = renderSection(key, model.title, model.commands);
+        const frag = renderSection(key, model.title, model.commands, model.tags, model.commandTags);
         first.parentNode.insertBefore(frag, first);
         els.forEach(el => el.remove());
     }
@@ -397,23 +575,37 @@ document.addEventListener('DOMContentLoaded', () => {
         (store.custom || []).forEach(model => {
             if (deleted.has(model.key)) return;
             const finalModel = edits[model.key] || model;
-            content.appendChild(renderSection(finalModel.key, finalModel.title, finalModel.commands));
+            content.appendChild(
+                renderSection(finalModel.key, finalModel.title, finalModel.commands, finalModel.tags, finalModel.commandTags)
+            );
         });
     }
 
     function getSectionModel(key) {
         const els = Array.from(content.querySelectorAll(`[data-section-key="${key}"]`));
         let title = '';
+        let tags = [];
         const commands = [];
+        const commandTags = [];
         els.forEach(el => {
             if (HEADING_RE.test(el.tagName)) {
                 title = el.textContent.trim();
+                tags = parseTags(el.getAttribute('data-tags'));
                 return;
             }
-            const code = el.tagName === 'PRE' ? el.querySelector('code') : null;
-            if (code) commands.push(code.textContent.trim());
+            if (el.tagName !== 'PRE') return;
+            const code = el.querySelector('code');
+            if (!code) return;
+            commands.push(code.textContent.trim());
+            commandTags.push(parseTags(el.getAttribute('data-command-tags')));
         });
-        return { key, title, commands: commands.filter(Boolean) };
+        for (let i = commands.length - 1; i >= 0; i--) {
+            if (!commands[i]) {
+                commands.splice(i, 1);
+                commandTags.splice(i, 1);
+            }
+        }
+        return { key, title, tags, commands, commandTags };
     }
 
     function getActiveSectionKey() {
@@ -442,11 +634,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const model = getSectionModel(key);
             modalHeading.value = model.title;
             modalCommands.value = model.commands.join('\n');
+            modalCommandTags.value = (model.commandTags || []).map(arr => arr.join(', ')).join('\n');
+            modalTags.value = (model.tags || []).join(', ');
             modalTitleEl.textContent = 'Edit section';
             modalDelete.hidden = false;
         } else {
             modalHeading.value = '';
             modalCommands.value = '';
+            modalCommandTags.value = '';
+            modalTags.value = '';
             modalTitleEl.textContent = 'Add new section';
             modalDelete.hidden = true;
         }
@@ -462,6 +658,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveModal() {
         const title = modalHeading.value.trim();
         const commands = modalCommands.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const sectionTags = parseTags(modalTags.value);
+        // One tags line per command line; lines beyond the command count are ignored.
+        const rawCommandTags = modalCommandTags.value.split(/\r?\n/).map(ln => parseTags(ln));
+        const commandTags = commands.map((cmd, i) => rawCommandTags[i] || []);
         if (!title) {
             modalHeading.focus();
             return;
@@ -474,18 +674,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (custom) {
                 custom.title = title;
                 custom.commands = commands;
+                custom.tags = sectionTags;
+                custom.commandTags = commandTags;
             } else {
                 store.edits = store.edits || {};
-                store.edits[modalKey] = { title, commands };
+                store.edits[modalKey] = { title, commands, tags: sectionTags, commandTags };
             }
-            replaceSectionDom(modalKey, { title, commands });
+            replaceSectionDom(modalKey, { title, commands, tags: sectionTags, commandTags });
         } else {
             const key = `custom-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
             store.custom = store.custom || [];
-            store.custom.push({ key, title, commands });
-            content.appendChild(renderSection(key, title, commands));
+            store.custom.push({ key, title, commands, tags: sectionTags, commandTags });
+            content.appendChild(renderSection(key, title, commands, sectionTags, commandTags));
         }
         saveStore(store);
+        reorderSections(); // keep everything in alphabetical order
         closeModal();
         ensureCopyButtons();
         filterItems(searchInput.value);
@@ -652,6 +855,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ensureCopyButtons();
     assignSectionKeys();
     applyStoreToDom();
+    reorderSections(); // alphabetical first-pass sort
     ensureCopyButtons(); // for sections injected from the store
     filterItems('');
     searchInput.focus();

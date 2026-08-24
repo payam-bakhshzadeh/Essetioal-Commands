@@ -212,6 +212,53 @@ hr {
 }
 
 /* ===============================
+   SECTION TAGS (tagging system)
+=============================== */
+
+.section-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+.tag-chip {
+    display: inline-block;
+    background: #1a1a1a;
+    color: #8413A9;
+    border: 1px solid #393939;
+    border-radius: 3px;
+    padding: 2px 9px;
+    font-size: 12px;
+    font-family: inherit;
+    line-height: 1.4;
+    user-select: none;
+    cursor: default;
+}
+
+.tag-chip:hover,
+.tag-chip:focus {
+    background: #8413A9;
+    color: #ffffff;
+    border-color: #8413A9;
+}
+
+/* Per-command tags: shown right under the command they belong to */
+.command-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 10px 8px;
+}
+
+.command-tags .tag-chip {
+    font-size: 11px;
+    padding: 1px 8px;
+    color: #a06fc2;
+    background: #141414;
+}
+
+/* ===============================
    SEARCH HIGHLIGHT
 ================================ */
 
