@@ -1,6 +1,6 @@
 /* ===============================
    BASE LAYOUT
-================================ */
+=============================== */
 
 html,
 body {
@@ -20,7 +20,7 @@ body {
 
 /* ===============================
    TYPOGRAPHY
-================================ */
+=============================== */
 
 h1,
 h2,
@@ -41,10 +41,6 @@ a {
     text-decoration: none;
 }
 
-/* ===============================
-   CODE
-================================ */
-
 code {
     background: #111111;
     color: #d0d0d0;
@@ -52,38 +48,76 @@ code {
     border-radius: 4px;
 }
 
-pre {
+/* ===============================
+   CODE BLOCKS
+   هر عنوان = یک بلوک کد؛ هر دستور = یک ردیف با دکمه کپی خودش
+=============================== */
+
+.code-block {
     background: #111111;
-    padding: 24px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    overflow-x: hidden;
     border: 1px solid #222222;
-    page-break-inside: avoid;
-    position: relative;
+    border-radius: 6px;
+    margin: 0 0 28px;
+    padding: 6px 0;
+    overflow: hidden;
 }
 
-pre code {
-    background: none;
-    color: #999999;
-    padding: 0;
+.cmd-row {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 58px 12px 14px;
+}
+
+.cmd-row + .cmd-row {
+    border-top: 1px solid #1a1a1a;
+}
+
+.cmd-lines {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: block;
+}
+
+.cmd-lines .ln {
+    display: block;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    color: #d0d0d0;
 }
 
-/* استایل کامنت‌های داخل بلوک کد */
-pre code .comment {
-    color: #868585;
+/* کامنت: کمرنگ‌تر از متن اصلی کد تا هنگام کپی اشتباه پیش نیاید */
+.cmd-lines .comment {
+    color: #7d7d7d;
     font-style: italic;
-    font-size: small;
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
-/* دکمه کپی */
+/* ردیف‌های کامنت کامل: فاصله بیشتر با دستورات اصلی */
+.cmd-lines .ln.comment-line {
+    margin: 4px 0 14px;
+    color: #8a8a8a;
+}
+
+/* شناسه یکتای هر دستور؛ در جستجو تایپ شود + Ctrl+E برای ویرایش */
+.cmd-id {
+    flex: 0 0 auto;
+    min-width: 42px;
+    font-size: 11px;
+    color: #555555;
+    line-height: 1.7;
+    padding-top: 3px;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* دکمه کپی: مقابل هر دستور، وسط همان ردیف، جایگاه ثابت */
 .copy-btn {
     position: absolute;
-    top: 10px;
+    top: 50%;
     right: 10px;
+    transform: translateY(-50%);
     background: #222222;
     color: #888888;
     border: 1px solid #333333;
@@ -102,7 +136,11 @@ pre code .comment {
     background: #333333;
     color: #ffffff;
     border-color: #8413A9;
-    /* هایلایت زبرجدی/سبز هنگام فوکوس با کیبورد */
+}
+
+.copy-btn.copied {
+    color: #4caf50;
+    border-color: #4caf50;
 }
 
 .copy-btn svg {
@@ -111,9 +149,43 @@ pre code .comment {
     fill: currentColor;
 }
 
+/* هایلایت بخش فعال هنگام ناوبری با کیبورد */
+h2.active-section {
+    color: #ffffff;
+}
+
+.code-block.active-section {
+    border-color: #333333;
+}
+
+.cmd-row.active-section {
+    background: rgba(132, 19, 169, 0.06);
+}
+
+/* سازگاری با بلوک‌های <pre> قدیمی */
+pre {
+    background: #111111;
+    border: 1px solid #222222;
+    border-radius: 6px;
+    padding: 24px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+    position: relative;
+    page-break-inside: avoid;
+}
+
+pre code {
+    background: none;
+    color: #999999;
+    padding: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 /* ===============================
    TERMINAL SEARCH BAR
-================================ */
+=============================== */
 
 #terminal-search {
     position: sticky;
@@ -165,7 +237,7 @@ pre code .comment {
 
 /* ===============================
    BLOCK ELEMENTS & PRINT CONTROL
-================================ */
+=============================== */
 
 blockquote {
     border-left: 4px solid #444444;
@@ -205,6 +277,7 @@ hr {
     }
 
     .copy-btn,
+    .cmd-id,
     #terminal-search,
     #editor-modal {
         display: none !important;
@@ -212,55 +285,8 @@ hr {
 }
 
 /* ===============================
-   SECTION TAGS (tagging system)
-=============================== */
-
-.section-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 4px 0 8px;
-}
-
-.tag-chip {
-    display: inline-block;
-    background: #1a1a1a;
-    color: #8413A9;
-    border: 1px solid #393939;
-    border-radius: 3px;
-    padding: 2px 9px;
-    font-size: 12px;
-    font-family: inherit;
-    line-height: 1.4;
-    user-select: none;
-    cursor: default;
-}
-
-.tag-chip:hover,
-.tag-chip:focus {
-    background: #8413A9;
-    color: #ffffff;
-    border-color: #8413A9;
-}
-
-/* Per-command tags: shown right under the command they belong to */
-.command-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 4px 0 10px 8px;
-}
-
-.command-tags .tag-chip {
-    font-size: 11px;
-    padding: 1px 8px;
-    color: #a06fc2;
-    background: #141414;
-}
-
-/* ===============================
    SEARCH HIGHLIGHT
-================================ */
+=============================== */
 
 mark.search-hit {
     background: #530B69;
@@ -270,7 +296,7 @@ mark.search-hit {
 
 /* ===============================
    ADD / EDIT MODAL
-================================ */
+=============================== */
 
 #editor-modal {
     position: fixed;
@@ -354,6 +380,18 @@ mark.search-hit {
 .modal-body input:focus,
 .modal-body textarea:focus {
     border-color: #8413A9;
+}
+
+.modal-body input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.modal-hint {
+    color: #666666;
+    font-size: 11px;
+    line-height: 1.6;
+    margin: -2px 0 6px;
 }
 
 .modal-footer {

@@ -1,17 +1,19 @@
-// Keyboard-first live search for dynamic content, with in-page content
-// management (add / edit / delete sections) and match highlighting.
+// Keyboard-first live search for a command reference with block comments.
 //
-// - The search box is always visible at the top; typing anywhere focuses it.
-// - Content inside #content is split into sections (heading + following
-//   blocks until the next heading), so any markup works - no fixed classes.
-// - Tab / arrows move between the copy buttons of the visible sections and
-//   Enter on a button copies it.
-// - While typing, every match inside the visible sections is highlighted.
-// - Ctrl+I opens a modal to add a new section (title + commands).
-// - Ctrl+E edits the section that contains the currently focused element.
-// - Delete removes that section (after confirmation).
-// - Custom sections plus edits/deletes are persisted in localStorage.
-console.log('script.js (keyboard-first instant search + content manager) loading...');
+// - One search box; typing anywhere focuses it. Clicking a copy button puts
+//   focus straight back into the search box so the user can keep typing or
+//   press Backspace without touching the mouse.
+// - Each title is ONE code block (.code-block). Every command inside it is a
+//   .cmd-row with its own copy button and its own id badge (git-1, git-2...).
+// - Comments use '# ' syntax (trailing or full-line). Copy only ever includes
+//   the raw commands - comments are stripped and whole comment lines dropped.
+// - In the editor, one Enter continues the same command; a blank line (two
+//   Enters) or Shift+Enter starts a new independent command.
+// - Tab / arrows move between copy buttons, Enter copies the focused button.
+// - Ctrl+I adds a section; Ctrl+E edits the focused command row (or the whole
+//   section when a heading is focused) or the row whose id is typed in search.
+// - Custom sections and edits are persisted in localStorage.
+console.log('script.js (keyboard-first search + command blocks) loading...');
 
 const copyIcon = `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
 const checkIcon = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
@@ -25,6 +27,97 @@ const ATOMIC_TAGS = new Set([
 ]);
 
 const STORAGE_KEY = 'freebuff_sections_v1';
+// Shift+Enter inside the editor inserts this separator. It is an actual line
+// separator, so it renders like a newline in a <textarea> while still being
+// distinct from a plain one-Enter line continuation.
+const BLOCK_SEP = '\u2028';
+
+// ------------------------------------------------------------------------
+// Comment-aware helpers
+// ------------------------------------------------------------------------
+function escapeHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// A comment starts at a '#' at the start of a line or right after whitespace,
+// and is followed by whitespace, another '#' or the end of the line.
+function findCommentStart(line) {
+    for (let i = 0; i < line.length; i++) {
+        if (line[i] !== '#') continue;
+        const prev = i === 0 ? '' : line[i - 1];
+        const next = i + 1 < line.length ? line[i + 1] : '';
+        if ((i === 0 || /\s/.test(prev)) && (next === '' || next === '#' || /\s/.test(next))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Build the innerHTML of .cmd-lines from the raw command text: one .ln span
+// per physical line; a full-line comment gets .comment-line (extra spacing);
+// the comment part of any line is wrapped in <span class="comment">.
+function buildCommandHtml(text) {
+    return String(text || '')
+        .split(/\r?\n/)
+        .map(line => {
+            const idx = findCommentStart(line);
+            if (idx === -1) return `<span class="ln">${escapeHtml(line)}</span>`;
+            const cmd = line.slice(0, idx);
+            if (cmd.trim() === '') {
+                return `<span class="ln comment-line"><span class="comment">${escapeHtml(line)}</span></span>`;
+            }
+            return `<span class="ln">${escapeHtml(cmd)}<span class="comment">${escapeHtml(line.slice(idx))}</span></span>`;
+        })
+        .join('\n');
+}
+
+// The exact text copied for one .cmd-row: comments stripped, whole comment
+// lines dropped, remaining physical lines joined with a newline.
+function getRowCommandText(row) {
+    const lines = Array.from(row.querySelectorAll('.ln'));
+    const out = [];
+    lines.forEach(ln => {
+        const clone = ln.cloneNode(true);
+        clone.querySelectorAll('.comment').forEach(el => el.remove());
+        const text = clone.textContent.replace(/\s+$/, '');
+        if (text.trim() === '') return;
+        out.push(text);
+    });
+    return out.join('\n');
+}
+
+// Clipboard write with a legacy fallback for file:// and blocked APIs.
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return;
+    } catch (err) {
+        console.warn('clipboard API blocked, using legacy fallback', err);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { if (document.execCommand) document.execCommand('copy'); } catch (e) { /* noop */ }
+    ta.remove();
+}
+
+// Editor text -> independent commands. One Enter continues a command; a blank
+// line (two Enter presses) or the Shift+Enter separator starts a new one.
+function parseBlocks(value) {
+    return String(value || '')
+        .split(BLOCK_SEP)
+        .flatMap(part => part.split(/\r?\n[ \t\r\n]*\r?\n/))
+        .map(block => block.trim())
+        .filter(Boolean);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM ready - initializing');
@@ -41,48 +134,82 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalDelete = document.getElementById('modal-delete');
     const modalCancel = document.getElementById('modal-cancel');
     const modalClose = document.getElementById('modal-close');
-    const modalTags = document.getElementById('modal-tags');
-    const modalCommandTags = document.getElementById('modal-command-tags');
 
     if (!content || !searchInput || !searchCount || !editorModal ||
-        !modalHeading || !modalCommands || !modalSave || !modalDelete || !modalTags || !modalCommandTags) {
+        !modalHeading || !modalCommands || !modalSave || !modalDelete) {
         console.error('Required elements not found', { content, searchInput, searchCount, editorModal });
         return;
     }
 
     let modalMode = 'add';
     let modalKey = null;
+    let modalBlockIndex = null;
 
     // ------------------------------------------------------------------
-    // Copy buttons (generic: every <pre><code> gets one)
+    // Copy buttons + command id badges (one set per command row)
     // ------------------------------------------------------------------
-    function ensureCopyButtons() {
-        content.querySelectorAll('pre').forEach(pre => {
-            if (pre.querySelector('.copy-btn')) return; // avoid duplicates
-            const code = pre.querySelector('code');
-            if (!code) return;
-            const rawText = code.textContent;
-            const button = document.createElement('button');
-            button.className = 'copy-btn';
-            button.type = 'button';
-            button.innerHTML = copyIcon;
-            button.setAttribute('tabindex', '0');
-            button.setAttribute('aria-label', 'Copy code to clipboard');
-            button.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(rawText);
-                    button.innerHTML = checkIcon;
-                    setTimeout(() => (button.innerHTML = copyIcon), 1600);
-                } catch (err) {
-                    console.error('Clipboard write failed', err);
-                }
-            });
-            pre.appendChild(button);
+    function attachCopyButton(row) {
+        let btn = row.querySelector('.copy-btn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.type = 'button';
+            btn.innerHTML = copyIcon;
+            btn.setAttribute('tabindex', '0');
+            btn.setAttribute('aria-label', 'Copy command to clipboard');
+            row.appendChild(btn);
+        }
+        // onclick (property) so re-inits never stack listeners.
+        btn.onclick = async (e) => {
+            e.preventDefault();
+            await copyText(getRowCommandText(row));
+            btn.innerHTML = checkIcon;
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.innerHTML = copyIcon;
+                btn.classList.remove('copied');
+            }, 1600);
+            // بدون نیاز به کلیک موس، فوکوس به جستجو برمی‌گردد تا بتوان
+            // بلافاصله تایپ کرد یا Backspace زد.
+            searchInput.focus();
+        };
+    }
+
+    function ensureCopyButtons(root = content) {
+        root.querySelectorAll('.cmd-row').forEach(attachCopyButton);
+    }
+
+    function ensureCommandIdBadges(root = content) {
+        root.querySelectorAll('.cmd-row').forEach(row => {
+            if (row.querySelector('.cmd-id')) return;
+            const chip = document.createElement('span');
+            chip.className = 'cmd-id';
+            row.insertBefore(chip, row.firstChild);
         });
     }
 
+    function setUnitVisible(unit, visible) {
+        const display = visible ? '' : 'none';
+        if (unit.heading) unit.heading.style.display = display;
+        for (const el of unit.body) el.style.display = display;
+    }
+
+    // Is this element (or one of its ancestors up to #content) hidden by us?
+    function isActuallyVisible(el) {
+        let node = el;
+        while (node && node !== content) {
+            if (node.style && node.style.display === 'none') return false;
+            node = node.parentElement;
+        }
+        return true;
+    }
+
+    function getVisibleCopyButtons() {
+        return Array.from(content.querySelectorAll('.copy-btn')).filter(isActuallyVisible);
+    }
+
     // ------------------------------------------------------------------
-    // Generic section discovery (no fixed class names)
+    // Section discovery (generic)
     // ------------------------------------------------------------------
     function isHeading(el) {
         return HEADING_RE.test(el.tagName);
@@ -97,8 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return false;
     }
 
-    // Walk the live DOM and build sections:
-    //   { heading: HTMLElement|null, body: HTMLElement[] }
     function collectUnits(root) {
         const units = [];
         let current = null;
@@ -117,7 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 units.push(current);
                 return;
             }
-            if (el.classList && (el.classList.contains('section-tags') || el.classList.contains('command-tags'))) {
+            // .code-block is the atomic body element of a section.
+            if (el.classList && el.classList.contains('code-block')) {
                 ensureCurrent(el);
                 return;
             }
@@ -141,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Alphabetical sorting (Feature: re-order sections by title)
+    // Alphabetical sorting (sections stay ordered by title)
     // ------------------------------------------------------------------
     function compareSectionTitles(a, b) {
         return String(a).localeCompare(String(b), undefined, {
@@ -150,9 +276,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Physically re-order the sections inside #content so they stay in
-    // alphabetical order after edits / additions. Items without a heading
-    // (leading fragments) sink to the top.
     function reorderSections() {
         const units = collectUnits(content);
         const sorted = units
@@ -176,98 +299,92 @@ document.addEventListener('DOMContentLoaded', () => {
         content.appendChild(frag);
     }
 
-    // ------------------------------------------------------------------
-    // Tag helpers
-    // ------------------------------------------------------------------
-    // "git, PYTHON, docker" -> ["git", "python", "docker"]  (# stripped)
-    function parseTags(str) {
-        return String(str || '')
-            .split(/[\s,،]+/)
-            .map(s => s.trim().replace(/^#+/, ''))
-            .filter(Boolean);
+    function slugify(text) {
+        return String(text).toLowerCase()
+            .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'section';
     }
 
-    function getUnitTags(unit) {
-        if (!unit.heading) return [];
-        const raw = unit.heading.getAttribute('data-tags') || '';
-        return raw.split(',').map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase());
-    }
-
-    // The visible <span class="tag-chip"> elements belonging to a unit.
-    function getTagElementsInUnit(unit) {
-        const els = [];
-        unit.body.forEach(el => {
-            if (!el.classList) return;
-            if (el.classList.contains('tag-chip')) {
-                els.push(el);
-            } else if (el.classList.contains('section-tags') || el.classList.contains('command-tags')) {
-                els.push(...Array.from(el.querySelectorAll('.tag-chip')));
-            }
+    function assignSectionKeys() {
+        const units = collectUnits(content);
+        const seen = new Map();
+        units.forEach(unit => {
+            const headingText = unit.heading ? unit.heading.textContent.trim() : '(untitled)';
+            const slug = slugify(headingText);
+            const n = seen.get(slug) || 0;
+            seen.set(slug, n + 1);
+            const key = n === 0 ? `static-${slug}` : `static-${slug}-${n + 1}`;
+            if (unit.heading) unit.heading.setAttribute('data-section-key', key);
+            unit.body.forEach(el => el.setAttribute('data-section-key', key));
         });
-        return els;
     }
 
     // ------------------------------------------------------------------
-    // Per-command tagging helpers
+    // Command ids: unique per row, shown as a badge, typed into search
     // ------------------------------------------------------------------
-    // Every command <pre> (rendered by renderSection) carries
-    //   data-command-index  -> its position inside the section
-    //   data-command-tags   -> its own comma-separated tags
-    function collectCommandInfo(unit) {
-        const out = [];
-        unit.body.forEach(el => {
-            if (el.tagName !== 'PRE') return;
-            const idx = el.dataset && el.dataset.commandIndex;
-            if (idx === undefined) return; // static commands have no per-command info
-            out.push({
-                idx: Number(idx),
-                tags: (el.getAttribute('data-command-tags') || '')
-                    .split(',').map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase())
+    function assignCommandIds() {
+        const units = collectUnits(content);
+        const counts = new Map();
+        units.forEach(unit => {
+            const title = unit.heading ? unit.heading.textContent.trim() : '(untitled)';
+            let base = slugify(title);
+            const n = counts.get(base) || 0;
+            counts.set(base, n + 1);
+            if (n > 0) base = `${base}-${n + 1}`;
+            let i = 1;
+            unit.body.forEach(el => {
+                if (!el.classList || !el.classList.contains('code-block')) return;
+                el.querySelectorAll('.cmd-row').forEach(row => {
+                    const id = `${base}-${i}`;
+                    row.setAttribute('data-command-id', id);
+                    row.id = `cmd-${id}`;
+                    const chip = row.querySelector('.cmd-id');
+                    if (chip) chip.textContent = id;
+                    i++;
+                });
             });
         });
-        out.sort((a, b) => a.idx - b.idx);
-        return out;
     }
 
-    // The <span class="tag-chip"> elements shown under a specific command.
-    function getCommandChipEls(unit, index) {
-        for (const el of unit.body) {
-            if (el.classList && el.classList.contains('command-tags')
-                && Number(el.dataset.commandIndex) === index) {
-                return Array.from(el.querySelectorAll('.tag-chip'));
-            }
-        }
-        return [];
+    function getBlockById(id) {
+        const q = String(id || '').trim();
+        if (!q) return null;
+        return content.querySelector(`.cmd-row[data-command-id="${q}"]`);
     }
 
-    // Show/hide one specific command (<pre> + its tag chips).
-    function setCommandVisible(unit, index, visible) {
-        const display = visible ? '' : 'none';
-        unit.body.forEach(el => {
-            if (el.dataset && Number(el.dataset.commandIndex) === index) {
-                el.style.display = display;
-            }
+    // ------------------------------------------------------------------
+    // Rendering & normalisation
+    // ------------------------------------------------------------------
+    function normalizeCodeBlocks(root = content) {
+        root.querySelectorAll('.cmd-row').forEach(row => {
+            const lines = row.querySelector('.cmd-lines');
+            if (lines) lines.innerHTML = buildCommandHtml(lines.textContent);
         });
     }
 
-    function setUnitVisible(unit, visible) {
-        const display = visible ? '' : 'none';
-        if (unit.heading) unit.heading.style.display = display;
-        for (const el of unit.body) el.style.display = display;
-    }
-
-    // Is this element (or one of its ancestors up to #content) hidden by us?
-    function isActuallyVisible(el) {
-        let node = el;
-        while (node && node !== content) {
-            if (node.style && node.style.display === 'none') return false;
-            node = node.parentElement;
-        }
-        return true;
-    }
-
-    function getVisibleCopyButtons() {
-        return Array.from(content.querySelectorAll('.copy-btn')).filter(isActuallyVisible);
+    // Converts any legacy <pre> blocks into the .code-block/.cmd-row layout.
+    function migrateLegacyPres() {
+        const pres = Array.from(content.querySelectorAll('pre'));
+        if (pres.length === 0) return;
+        pres.forEach(pre => {
+            const code = pre.querySelector('code');
+            const text = code ? code.textContent : pre.textContent;
+            const key = pre.getAttribute('data-section-key');
+            const block = document.createElement('div');
+            block.className = 'code-block';
+            const row = document.createElement('div');
+            row.className = 'cmd-row';
+            const lines = document.createElement('span');
+            lines.className = 'cmd-lines';
+            lines.textContent = text;
+            row.appendChild(lines);
+            block.appendChild(row);
+            if (key) {
+                block.setAttribute('data-section-key', key);
+                row.setAttribute('data-section-key', key);
+            }
+            pre.replaceWith(block);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -316,18 +433,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Filtering (smart search)
-    //   - plain query  -> matched against section TITLES and CONTENT
-    //   - query beginning with "#" -> matched against section TAGS
-    //     * a section-level tag match shows the WHOLE section
-    //     * otherwise individual commands that carry that tag are shown
+    // Filtering (smart search): matches titles, commands AND comments
     // ------------------------------------------------------------------
     function filterItems(query) {
         clearHighlights();
         const units = collectUnits(content);
         const q = (query || '').trim();
-        const isTagSearch = q.startsWith('#');
-        const term = (isTagSearch ? q.slice(1) : q).trim().toLowerCase();
+        const term = q.toLowerCase();
         let visible = 0;
 
         if (term === '') {
@@ -335,47 +447,16 @@ document.addEventListener('DOMContentLoaded', () => {
             visible = units.length;
         } else {
             units.forEach(u => {
-                let matches = false;
-                if (isTagSearch) {
-                    const sectionTagMatch = getUnitTags(u).some(t => t.includes(term));
-                    if (sectionTagMatch) {
-                        // The section itself is tagged -> show it completely.
-                        matches = true;
-                        setUnitVisible(u, true);
-                        highlightTextInElements(getTagElementsInUnit(u), term);
-                    } else {
-                        // Filter the individual commands of this section.
-                        // Start from everything hidden, then re-show the
-                        // commands that carry the searched tag.
-                        setUnitVisible(u, false);
-                        const commands = collectCommandInfo(u);
-                        let anyVisible = false;
-                        commands.forEach(ci => {
-                            const cmdMatch = ci.tags.some(t => t.includes(term));
-                            if (cmdMatch) {
-                                anyVisible = true;
-                                setCommandVisible(u, ci.idx, true);
-                                highlightTextInElements(getCommandChipEls(u, ci.idx), term);
-                            }
-                        });
-                        // Keep the heading as a group label if any command matches.
-                        if (u.heading) u.heading.style.display = anyVisible ? '' : 'none';
-                        matches = anyVisible;
-                    }
-                } else {
-                    // Plain search: match against the title OR the command/code
-                    // content of the section. Highlight every occurrence.
-                    const title = u.heading ? u.heading.textContent.toLowerCase() : '';
-                    const contentText = u.body.map(el => el.textContent).join(' ').toLowerCase();
-                    matches = title.includes(term) || contentText.includes(term);
-                    if (matches) {
-                        const targets = [];
-                        if (u.heading) targets.push(u.heading);
-                        targets.push(...u.body);
-                        highlightTextInElements(targets, term);
-                    }
-                    setUnitVisible(u, matches);
+                const title = u.heading ? u.heading.textContent.toLowerCase() : '';
+                const contentText = u.body.map(el => el.textContent).join(' ').toLowerCase();
+                const matches = title.includes(term) || contentText.includes(term);
+                if (matches) {
+                    const targets = [];
+                    if (u.heading) targets.push(u.heading);
+                    targets.push(...u.body);
+                    highlightTextInElements(targets, term);
                 }
+                setUnitVisible(u, matches);
                 if (matches) visible++;
             });
         }
@@ -407,13 +488,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleTab(shiftKey) {
         const btns = getVisibleCopyButtons();
-        if (btns.length === 0) return; // never let Tab reach links / other elements
+        if (btns.length === 0) return;
         const active = document.activeElement;
         const idx = btns.indexOf(active);
 
         if (shiftKey) {
             if (idx <= 0) {
-                searchInput.focus(); // back to the search box
+                searchInput.focus();
             } else {
                 btns[idx - 1].focus();
             }
@@ -454,76 +535,52 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.focus();
     }
 
-    // ------------------------------------------------------------------
-    // Section management (add / edit / delete + persistence)
-    // ------------------------------------------------------------------
-    function slugify(text) {
-        return String(text).toLowerCase()
-            .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
-            .replace(/^-+|-+$/g, '') || 'section';
+    // Modify the search box as if Backspace was pressed inside it, without
+    // requiring the input itself to be focused.
+    function backspaceInSearch() {
+        const start = searchInput.selectionStart ?? searchInput.value.length;
+        const end = searchInput.selectionEnd ?? searchInput.value.length;
+        if (end > start) {
+            searchInput.value = searchInput.value.slice(0, start) + searchInput.value.slice(end);
+            searchInput.setSelectionRange(start, start);
+        } else if (start > 0) {
+            searchInput.value = searchInput.value.slice(0, start - 1) + searchInput.value.slice(start);
+            searchInput.setSelectionRange(start - 1, start - 1);
+        }
+        filterItems(searchInput.value);
+        searchInput.focus();
     }
 
-    function assignSectionKeys() {
-        const units = collectUnits(content);
-        const seen = new Map();
-        units.forEach(unit => {
-            const headingText = unit.heading ? unit.heading.textContent.trim() : '(untitled)';
-            const slug = slugify(headingText);
-            const n = seen.get(slug) || 0;
-            seen.set(slug, n + 1);
-            const key = n === 0 ? `static-${slug}` : `static-${slug}-${n + 1}`;
-            if (unit.heading) unit.heading.setAttribute('data-section-key', key);
-            unit.body.forEach(el => el.setAttribute('data-section-key', key));
-        });
-    }
-
-    function renderSection(key, title, commands, tags, commandTags) {
+    // ------------------------------------------------------------------
+    // Section / command management (add / edit / delete + persistence)
+    // ------------------------------------------------------------------
+    // One <div class="code-block"> per section, each command its own row.
+    function renderSection(key, title, blocks) {
         const frag = document.createDocumentFragment();
         const h = document.createElement('h2');
         h.textContent = title;
         h.setAttribute('data-section-key', key);
-        if (tags && tags.length) h.setAttribute('data-tags', tags.join(','));
         frag.appendChild(h);
 
-        if (tags && tags.length) {
-            const wrap = document.createElement('div');
-            wrap.className = 'section-tags';
-            wrap.setAttribute('data-section-key', key);
-            tags.forEach(t => {
-                const span = document.createElement('span');
-                span.className = 'tag-chip';
-                span.textContent = '#' + t;
-                wrap.appendChild(span);
-            });
-            frag.appendChild(wrap);
-        }
+        const block = document.createElement('div');
+        block.className = 'code-block';
+        block.setAttribute('data-section-key', key);
 
-        (commands || []).forEach((cmd, i) => {
-            const ctags = (commandTags || [])[i] || [];
-            const pre = document.createElement('pre');
-            pre.className = 'user-command';
-            pre.setAttribute('data-section-key', key);
-            pre.setAttribute('data-command-index', String(i));
-            if (ctags.length) pre.setAttribute('data-command-tags', ctags.join(','));
-            const code = document.createElement('code');
-            code.textContent = cmd;
-            pre.appendChild(code);
-            frag.appendChild(pre);
+        (blocks || []).forEach(command => {
+            const row = document.createElement('div');
+            row.className = 'cmd-row';
+            row.setAttribute('data-section-key', key);
 
-            if (ctags.length) {
-                const wrap = document.createElement('div');
-                wrap.className = 'command-tags';
-                wrap.setAttribute('data-section-key', key);
-                wrap.setAttribute('data-command-index', String(i));
-                ctags.forEach(t => {
-                    const span = document.createElement('span');
-                    span.className = 'tag-chip';
-                    span.textContent = '#' + t;
-                    wrap.appendChild(span);
-                });
-                frag.appendChild(wrap);
-            }
+            const lines = document.createElement('span');
+            lines.className = 'cmd-lines';
+            lines.innerHTML = buildCommandHtml(command);
+
+            row.appendChild(lines);
+            attachCopyButton(row);
+            block.appendChild(row);
         });
+
+        frag.appendChild(block);
         return frag;
     }
 
@@ -531,7 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const els = Array.from(content.querySelectorAll(`[data-section-key="${key}"]`));
         if (els.length === 0) return;
         const first = els[0];
-        const frag = renderSection(key, model.title, model.commands, model.tags, model.commandTags);
+        const frag = renderSection(key, model.title, model.commands);
         first.parentNode.insertBefore(frag, first);
         els.forEach(el => el.remove());
     }
@@ -576,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (deleted.has(model.key)) return;
             const finalModel = edits[model.key] || model;
             content.appendChild(
-                renderSection(finalModel.key, finalModel.title, finalModel.commands, finalModel.tags, finalModel.commandTags)
+                renderSection(finalModel.key, finalModel.title, finalModel.commands)
             );
         });
     }
@@ -584,28 +641,32 @@ document.addEventListener('DOMContentLoaded', () => {
     function getSectionModel(key) {
         const els = Array.from(content.querySelectorAll(`[data-section-key="${key}"]`));
         let title = '';
-        let tags = [];
         const commands = [];
-        const commandTags = [];
         els.forEach(el => {
             if (HEADING_RE.test(el.tagName)) {
                 title = el.textContent.trim();
-                tags = parseTags(el.getAttribute('data-tags'));
                 return;
             }
-            if (el.tagName !== 'PRE') return;
-            const code = el.querySelector('code');
-            if (!code) return;
-            commands.push(code.textContent.trim());
-            commandTags.push(parseTags(el.getAttribute('data-command-tags')));
+            if (!el.classList || !el.classList.contains('code-block')) return;
+            el.querySelectorAll('.cmd-row').forEach(row => {
+                const lines = row.querySelector('.cmd-lines');
+                if (lines) commands.push(lines.textContent.replace(/\s+$/, ''));
+            });
         });
-        for (let i = commands.length - 1; i >= 0; i--) {
-            if (!commands[i]) {
-                commands.splice(i, 1);
-                commandTags.splice(i, 1);
-            }
+        return { key, title, commands };
+    }
+
+    function saveModel(key, model) {
+        const store = getStore();
+        const custom = (store.custom || []).find(m => m.key === key);
+        if (custom) {
+            custom.title = model.title;
+            custom.commands = model.commands;
+        } else {
+            store.edits = store.edits || {};
+            store.edits[key] = { title: model.title, commands: model.commands };
         }
-        return { key, title, tags, commands, commandTags };
+        saveStore(store);
     }
 
     function getActiveSectionKey() {
@@ -624,30 +685,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     document.addEventListener('focusin', highlightActiveSection);
 
+    function editBlockAt(row) {
+        const blockEl = row ? row.closest('.code-block') : null;
+        if (!blockEl) return;
+        const key = blockEl.getAttribute('data-section-key');
+        if (!key) return;
+        const rows = Array.from(blockEl.querySelectorAll('.cmd-row'));
+        const idx = rows.indexOf(row);
+        if (idx === -1) return;
+        openModal('editBlock', key, idx);
+    }
+
     // ------------------------------------------------------------------
-    // Modal (add / edit section)
+    // Modal (add section / edit section / edit one command row)
     // ------------------------------------------------------------------
-    function openModal(mode, key) {
+    function openModal(mode, key, blockIndex) {
         modalMode = mode;
         modalKey = key || null;
-        if (mode === 'edit' && key) {
+        modalBlockIndex = (blockIndex === undefined || blockIndex === null) ? null : blockIndex;
+
+        if (mode === 'editBlock' && key && modalBlockIndex !== null) {
             const model = getSectionModel(key);
+            modalHeading.disabled = true;
             modalHeading.value = model.title;
-            modalCommands.value = model.commands.join('\n');
-            modalCommandTags.value = (model.commandTags || []).map(arr => arr.join(', ')).join('\n');
-            modalTags.value = (model.tags || []).join(', ');
-            modalTitleEl.textContent = 'Edit section';
+            modalCommands.value = model.commands[modalBlockIndex] || '';
+            modalTitleEl.textContent = 'Edit command';
             modalDelete.hidden = false;
+            modalDelete.textContent = 'Delete command';
         } else {
-            modalHeading.value = '';
+            modalHeading.disabled = false;
             modalCommands.value = '';
-            modalCommandTags.value = '';
-            modalTags.value = '';
-            modalTitleEl.textContent = 'Add new section';
-            modalDelete.hidden = true;
+            if (mode === 'edit' && key) {
+                const model = getSectionModel(key);
+                modalHeading.value = model.title;
+                modalCommands.value = model.commands.join('\n\n');
+                modalTitleEl.textContent = 'Edit section';
+                modalDelete.hidden = false;
+                modalDelete.textContent = 'Delete section';
+            } else {
+                modalHeading.value = '';
+                modalTitleEl.textContent = 'Add new section';
+                modalDelete.hidden = true;
+            }
         }
         editorModal.classList.remove('hidden');
-        modalHeading.focus();
+        if (mode === 'editBlock') modalCommands.focus();
+        else modalHeading.focus();
     }
 
     function closeModal() {
@@ -655,43 +738,45 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.focus();
     }
 
-    function saveModal() {
-        const title = modalHeading.value.trim();
-        const commands = modalCommands.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        const sectionTags = parseTags(modalTags.value);
-        // One tags line per command line; lines beyond the command count are ignored.
-        const rawCommandTags = modalCommandTags.value.split(/\r?\n/).map(ln => parseTags(ln));
-        const commandTags = commands.map((cmd, i) => rawCommandTags[i] || []);
-        if (!title) {
-            modalHeading.focus();
-            return;
-        }
-        const store = getStore();
-        if (modalMode === 'edit' && modalKey) {
-            // Edits to a user-created section update its own entry; edits to
-            // a static section go into the edits override map.
-            const custom = (store.custom || []).find(m => m.key === modalKey);
-            if (custom) {
-                custom.title = title;
-                custom.commands = commands;
-                custom.tags = sectionTags;
-                custom.commandTags = commandTags;
-            } else {
-                store.edits = store.edits || {};
-                store.edits[modalKey] = { title, commands, tags: sectionTags, commandTags };
-            }
-            replaceSectionDom(modalKey, { title, commands, tags: sectionTags, commandTags });
-        } else {
-            const key = `custom-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-            store.custom = store.custom || [];
-            store.custom.push({ key, title, commands, tags: sectionTags, commandTags });
-            content.appendChild(renderSection(key, title, commands, sectionTags, commandTags));
-        }
-        saveStore(store);
-        reorderSections(); // keep everything in alphabetical order
-        closeModal();
+    function afterContentChange() {
+        reorderSections();
+        assignSectionKeys();
         ensureCopyButtons();
+        ensureCommandIdBadges();
+        normalizeCodeBlocks();
+        assignCommandIds();
         filterItems(searchInput.value);
+    }
+
+    function saveModal() {
+        const blocks = parseBlocks(modalCommands.value);
+        if (modalMode === 'editBlock' && modalKey && modalBlockIndex !== null) {
+            const model = getSectionModel(modalKey);
+            if (model.commands.length === 0) return;
+            if (blocks.length === 0) { closeModal(); return; }
+            model.commands.splice(modalBlockIndex, 1, ...blocks);
+            saveModel(modalKey, model);
+            replaceSectionDom(modalKey, model);
+        } else {
+            const title = modalHeading.value.trim();
+            if (!title) {
+                modalHeading.focus();
+                return;
+            }
+            if (modalMode === 'edit' && modalKey) {
+                saveModel(modalKey, { title, commands: blocks });
+                replaceSectionDom(modalKey, { title, commands: blocks });
+            } else {
+                const key = `custom-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+                const store = getStore();
+                store.custom = store.custom || [];
+                store.custom.push({ key, title, commands: blocks });
+                saveStore(store);
+                content.appendChild(renderSection(key, title, blocks));
+            }
+        }
+        afterContentChange();
+        closeModal();
     }
 
     function deleteSection(key) {
@@ -707,16 +792,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         saveStore(store);
         content.querySelectorAll(`[data-section-key="${key}"]`).forEach(el => el.remove());
-        ensureCopyButtons();
-        filterItems(searchInput.value);
+        afterContentChange();
         searchInput.focus();
     }
 
     modalSave.addEventListener('click', saveModal);
     modalCancel.addEventListener('click', closeModal);
     modalClose.addEventListener('click', closeModal);
+
     modalDelete.addEventListener('click', () => {
-        if (modalKey && confirm('Delete this section?')) {
+        if (modalMode === 'editBlock' && modalKey && modalBlockIndex !== null) {
+            if (!confirm('Delete this command?')) return;
+            const model = getSectionModel(modalKey);
+            model.commands.splice(modalBlockIndex, 1);
+            if (model.commands.length === 0) {
+                deleteSection(modalKey);
+            } else {
+                saveModel(modalKey, model);
+                replaceSectionDom(modalKey, model);
+                afterContentChange();
+            }
+            closeModal();
+        } else if (modalKey && confirm('Delete this section?')) {
             deleteSection(modalKey);
             closeModal();
         }
@@ -733,10 +830,21 @@ document.addEventListener('DOMContentLoaded', () => {
             saveModal();
             return;
         }
+        if (e.target === modalCommands && e.key === 'Enter' && e.shiftKey) {
+            // Shift+Enter => start a new independent command.
+            e.preventDefault();
+            const start = modalCommands.selectionStart ?? modalCommands.value.length;
+            const end = modalCommands.selectionEnd ?? modalCommands.value.length;
+            modalCommands.value =
+                modalCommands.value.slice(0, start) + BLOCK_SEP + '\n' + modalCommands.value.slice(end);
+            const pos = start + 1;
+            modalCommands.setSelectionRange(pos, pos);
+            return;
+        }
         if (e.key === 'Tab') {
             const focusables = Array.from(
                 editorModal.querySelectorAll('button, input, textarea, [tabindex]:not([tabindex="-1"])')
-            ).filter(el => !el.hidden);
+            ).filter(el => !el.hidden && !el.disabled);
             if (focusables.length === 0) return;
             const first = focusables[0];
             const last = focusables[focusables.length - 1];
@@ -776,6 +884,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Backspace pressed anywhere outside the search box (e.g. after
+        // clicking a copy button) deletes inside the search box instead.
+        if (e.key === 'Backspace' && active !== searchInput) {
+            e.preventDefault();
+            backspaceInSearch();
+            return;
+        }
+
         // Ctrl+I: add a new section.
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'i' || e.key === 'I')) {
             e.preventDefault();
@@ -783,9 +899,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Ctrl+E: edit the section that contains the focused element.
+        // Ctrl+E: edit the command row whose id is typed in the search box,
+        // otherwise the row under the focused copy button, and for a focused
+        // heading keep the whole-section edit.
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'e' || e.key === 'E')) {
             e.preventDefault();
+            const byId = getBlockById(searchInput.value);
+            if (byId) { editBlockAt(byId); return; }
+            if (active && active !== searchInput) {
+                const row = active.closest('#content .cmd-row');
+                if (row) { editBlockAt(row); return; }
+            }
             const key = getActiveSectionKey();
             if (key) openModal('edit', key);
             return;
@@ -819,19 +943,26 @@ document.addEventListener('DOMContentLoaded', () => {
         // Escape: back to the search box, or clear it if already focused.
         if (e.key === 'Escape') {
             e.preventDefault();
-            if (active === searchInput) {
-                clearSearch();
-            } else {
-                searchInput.focus();
-            }
+            if (active === searchInput) clearSearch();
+            else searchInput.focus();
             return;
         }
     });
 
-    // Enter in the search box jumps to the first visible copy button.
+    // Enter in the search box jumps to that command's copy button (when the
+    // query is an exact command id), otherwise to the first visible button.
     searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            const byId = getBlockById(searchInput.value);
+            if (byId) {
+                const btn = byId.querySelector('.copy-btn');
+                if (btn) {
+                    try { btn.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
+                    btn.focus();
+                    return;
+                }
+            }
             focusFirstCopyButton();
         }
     });
@@ -852,11 +983,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Init
     // ------------------------------------------------------------------
-    ensureCopyButtons();
     assignSectionKeys();
+    migrateLegacyPres();
+    assignSectionKeys();       // re-tag after any legacy migration
+    normalizeCodeBlocks();
+    ensureCommandIdBadges();
+    ensureCopyButtons();
     applyStoreToDom();
-    reorderSections(); // alphabetical first-pass sort
-    ensureCopyButtons(); // for sections injected from the store
-    filterItems('');
+    afterContentChange();
     searchInput.focus();
 });

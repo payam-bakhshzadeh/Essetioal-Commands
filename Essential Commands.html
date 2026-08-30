@@ -9,41 +9,49 @@
 
 <body>
 
-    <!-- Search bar: always visible at the top, no shortcut needed -->
+    <!-- Search bar: always visible, typing anywhere focuses it -->
     <div id="terminal-search">
         <div class="terminal-header">
-            <span>Search · Ctrl+I new · Ctrl+E edit · Del delete · #tag to search tags</span>
+            <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · Enter copies</span>
             <span id="search-count">0 sections</span>
         </div>
         <div class="terminal-body">
             <span class="prompt">></span>
             <input type="text" id="search-input"
-                placeholder="Type to search titles &amp; content…  type #tag to search tags · Tab / ↑↓ to switch · Enter to copy · Esc to clear"
+                placeholder="Type to search titles, commands &amp; comments…  an id e.g. git-1 + Ctrl+E edits it · Tab / ↑↓ to switch · Enter to copy · Esc to clear"
                 autocomplete="off" />
         </div>
     </div>
 
     <div id="content">
 
-<h2 id="venv">.venv</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>.venv\Scripts\activate</span></code></pre></div>
-<h2 id="photo">1 Photo</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>python demos\demo_reconstruct.py <span class="op">-</span>i <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">Payam</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">DECA_input&quot;</span> <span class="op">-</span>s <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">Payam</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">DECA_input</span><span class="ch">\r</span><span class="st">esults&quot;</span> <span class="op">--</span>device cuda <span class="op">--</span>rasterizer_type standard <span class="op">--</span>saveVis <span class="va">True</span> <span class="op">--</span>saveObj <span class="va">True</span> <span class="op">--</span>saveMat <span class="va">True</span></span></code></pre></div>
-<h2 id="folder">folder</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a> demos\demo_reconstruct.py <span class="op">-</span>i <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">YourName</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">my_photos&quot;</span> <span class="op">-</span>s <span class="st">&quot;C:</span><span class="er">\</span><span class="st">Users</span><span class="er">\</span><span class="st">YourName</span><span class="er">\</span><span class="st">Desktop</span><span class="er">\</span><span class="st">my_photos</span><span class="ch">\r</span><span class="st">esults&quot;</span> <span class="op">--</span>device cuda <span class="op">--</span>rasterizer_type standard <span class="op">--</span>saveVis <span class="va">True</span> <span class="op">--</span>saveObj <span class="va">True</span></span></code></pre></div>
+        <h2 id="venv">.venv</h2>
+        <div class="code-block">
+            <div class="cmd-row"><span class="cmd-lines">.venv\Scripts\activate  # فعال کردن محیط مجازی</span></div>
+        </div>
 
-<h2 id="git">git</h2>
-<pre class="git"><code>git init</code></pre>
-<pre class="git"><code>git add .</code></pre>
-<pre class="git"><code>git commit -m &quot;comment&quot;</code></pre>
-<pre class="git"><code>git push origin main</code></pre>
+        <h2 id="photo">1 Photo</h2>
+        <div class="code-block">
+            <div class="cmd-row"><span class="cmd-lines">python demos\demo_reconstruct.py -i "C:\Users\Payam\Desktop\DECA_input" -s "C:\Users\Payam\Desktop\DECA_input\results" --device cuda --rasterizer_type standard --saveVis True --saveObj True --saveMat True</span></div>
+        </div>
 
+        <h2 id="folder">folder</h2>
+        <div class="code-block">
+            <div class="cmd-row"><span class="cmd-lines">python demos\demo_reconstruct.py -i "C:\Users\YourName\Desktop\my_photos" -s "C:\Users\YourName\Desktop\my_photos\results" --device cuda --rasterizer_type standard --saveVis True --saveObj True</span></div>
+        </div>
 
+        <h2 id="git">git</h2>
+        <div class="code-block">
+            <div class="cmd-row"><span class="cmd-lines">git init  # ساخت مخزن جدید</span></div>
+            <div class="cmd-row"><span class="cmd-lines">git add .  # اضافه کردن همه تغییرات</span></div>
+            <div class="cmd-row"><span class="cmd-lines">git commit -m "comment"  # ذخیره تغییرات</span></div>
+            <div class="cmd-row"><span class="cmd-lines">git push origin main  # انتشار روی ریموت</span></div>
+        </div>
 
-        <!-- content div     -->
+        <!-- content div -->
     </div>
 
-    <!-- Add / Edit Section Modal -->
+    <!-- Add / Edit Section / Edit Command Modal -->
     <div id="editor-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-heading-label">
         <div class="modal-box">
             <div class="modal-header">
@@ -53,15 +61,10 @@
             <div class="modal-body">
                 <label id="modal-heading-label" for="modal-heading">Title</label>
                 <input type="text" id="modal-heading" placeholder="e.g. git commands" autocomplete="off" />
-                <label for="modal-commands">Commands (one per line)</label>
-                <textarea id="modal-commands" rows="6" spellcheck="false"
-                    placeholder="git init&#10;git add .&#10;git commit -m &quot;message&quot;"></textarea>
-                <label for="modal-command-tags">Per-command tags (optional, one line per command)</label>
-                <textarea id="modal-command-tags" rows="3" spellcheck="false"
-                    placeholder="Line 1 tags: &#35;init&#10;Line 2 tags: (leave empty)&#10;Line 3 tags: commit"></textarea>
-                <label for="modal-tags">Section tags (comma separated)</label>
-                <input type="text" id="modal-tags" placeholder="git, python, deployment"
-                    autocomplete="off" spellcheck="false" />
+                <label for="modal-commands">Commands &amp; comments</label>
+                <textarea id="modal-commands" rows="8" spellcheck="false"
+                    placeholder="git init  # توضیح دستور&#10;git add .&#10;git commit -m &quot;msg&quot;  # کامنت همین خط&#10;&#10;git push  # با خط خالی (یا دو بار Enter) هر دستور جدا می‌شود"></textarea>
+                <p class="modal-hint">یک‌بار Enter = ادامه همان دستور · خط خالی یا دو بار Enter یا Shift+Enter = شروع یک دستور مستقل با دکمه کپی جدا</p>
             </div>
             <div class="modal-footer">
                 <button id="modal-save" class="modal-btn primary" type="button">Save</button>
