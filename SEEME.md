@@ -1,0 +1,12 @@
+- This is a app for save essential commands and search so fast. 
+- This app is based on Keyaboard. (Shortcut Keys)
+- ADD NEW ITEM:
+    - Ctrl + I => Title, Codes (will be inside of code block) and be able to add `# Comments` for each command.
+    - 1×Enter: Edame satr gabli khahad bud. (eyne narmafazare iA Writer ke ba 1 Enter text ro da edame text gabli minevisad.)
+    - 2 × ENTER: Yek satr va command jadid ke az command gabli jopda hastesh o mitavn # cooment joda set kard.
+- EDIT:
+    - Search Box: :ID + Enter
+    - Bara edit kardan bayad bar asase ID har command aval search kard bad Enter zad.
+    - WARRNING: Age gasd edit darid o mikhahid bar asase ID search konid hatman bayad gable ID alamate `:` garar dahid. Chon shayad
+                dakhele code ham add bashe , pas nabayad gati beshan.
+    - SUMMERY: Search Box= :10 -> search ID , Search Box= 10 -> search text inside commands and comments.

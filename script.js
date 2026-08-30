@@ -4,7 +4,11 @@
 //   focus straight back into the search box so the user can keep typing or
 //   press Backspace without touching the mouse.
 // - Each title is ONE code block (.code-block). Every command inside it is a
-//   .cmd-row with its own copy button and its own id badge (git-1, git-2...).
+//   .cmd-row with its own copy button and its own numeric id badge (1, 2, 3...)
+//   that is global across all sections and re-numbered from 1 on every re-sort.
+// - To edit a command by id, type ":N" in the search box and press Ctrl+E
+//   (":N" is an explicit id query, so it never collides with text like "a= 10";
+//   a plain number that doesn't match any text also works). Enter jumps to it.
 // - Comments use '# ' syntax (trailing or full-line). Copy only ever includes
 //   the raw commands - comments are stripped and whole comment lines dropped.
 // - In the editor, one Enter continues the same command; a blank line (two
@@ -211,6 +215,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Section discovery (generic)
     // ------------------------------------------------------------------
+    // Text of a body element excluding its id badge / copy button, so numeric
+    // ids never leak into (and pollute) text searches or id disambiguation.
+    function codeBlockText(el) {
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll('.cmd-id, .copy-btn').forEach(n => n.remove());
+        return (clone.textContent || '').replace(/\s+/g, ' ').toLowerCase();
+    }
+
     function isHeading(el) {
         return HEADING_RE.test(el.tagName);
     }
@@ -320,22 +332,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Command ids: unique per row, shown as a badge, typed into search
+    // Command ids: a global sequential counter, reset from 1 every time the
+    // content is re-sorted, so deleted numbers are reused and the visible
+    // order always matches id order (first row = id 1). No title prefix.
     // ------------------------------------------------------------------
     function assignCommandIds() {
         const units = collectUnits(content);
-        const counts = new Map();
+        let i = 1;
         units.forEach(unit => {
-            const title = unit.heading ? unit.heading.textContent.trim() : '(untitled)';
-            let base = slugify(title);
-            const n = counts.get(base) || 0;
-            counts.set(base, n + 1);
-            if (n > 0) base = `${base}-${n + 1}`;
-            let i = 1;
             unit.body.forEach(el => {
                 if (!el.classList || !el.classList.contains('code-block')) return;
                 el.querySelectorAll('.cmd-row').forEach(row => {
-                    const id = `${base}-${i}`;
+                    const id = String(i);
                     row.setAttribute('data-command-id', id);
                     row.id = `cmd-${id}`;
                     const chip = row.querySelector('.cmd-id');
@@ -346,10 +354,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function getBlockById(id) {
-        const q = String(id || '').trim();
+    // Resolve a command-id query from the search box. An id can be written
+    // with a leading ':' (e.g. ":10") to tell it apart from a plain text
+    // search (e.g. "10" matching "a= 10"); a plain number that isn't a live
+    // text match can still be used by the Ctrl+E / Enter handlers.
+    function parseIdQuery(value) {
+        const q = String(value || '').trim();
         if (!q) return null;
-        return content.querySelector(`.cmd-row[data-command-id="${q}"]`);
+        const m = /^:(\d+)$/.exec(q);
+        return m ? m[1] : null;
+    }
+
+    function getBlockById(value) {
+        const id = parseIdQuery(value);
+        if (!id) return null;
+        return content.querySelector(`.cmd-row[data-command-id="${id}"]`);
+    }
+
+    // Plain numbers: only treat them as command ids when they are candidates
+    // AND the query does not match any visible content text (otherwise "10"
+    // is a text search for "a= 10"). The exact/named ids are handled by
+    // getBlockById via the ":" prefix, so here we intentionally match a row
+    // whose numeric id is NOT already present in the text.
+    function findRowForStat(value) {
+        const q = String(value || '').trim();
+        if (!/^\d+$/.test(q)) return null;
+        const row = content.querySelector(`.cmd-row[data-command-id="${q}"]`);
+        if (!row) return null;
+        // If this same number appears in any visible content text (badges
+        // excluded), treat it as a text search, not an id.
+        const units = collectUnits(content)
+            .filter(u => isActuallyVisible(u.heading) || u.body.some(el => isActuallyVisible(el)));
+        const textBlob = units.map(u => u.body.map(codeBlockText).join(' ')).join(' ').toLowerCase();
+        if (textBlob.includes(q)) return null;
+        return row;
+    }
+
+    // Ctrl+E support for typing a plain id without the ':' prefix: resolve,
+    // but only when the number is not also live matching text.
+    function resolveIdForEdit(value) {
+        const byPrefix = getBlockById(value);
+        if (byPrefix) return byPrefix;
+        return findRowForStat(value);
     }
 
     // ------------------------------------------------------------------
@@ -439,6 +485,13 @@ document.addEventListener('DOMContentLoaded', () => {
         clearHighlights();
         const units = collectUnits(content);
         const q = (query || '').trim();
+        // An explicit id query (":10") is not a text search.
+        if (parseIdQuery(q) !== null) {
+            units.forEach(u => setUnitVisible(u, false));
+            searchCount.textContent = `0 / ${units.length} sections`;
+            console.log('filterItems (id query, no text filter)', JSON.stringify(q));
+            return;
+        }
         const term = q.toLowerCase();
         let visible = 0;
 
@@ -448,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             units.forEach(u => {
                 const title = u.heading ? u.heading.textContent.toLowerCase() : '';
-                const contentText = u.body.map(el => el.textContent).join(' ').toLowerCase();
+                const contentText = u.body.map(codeBlockText).join(' ').toLowerCase();
                 const matches = title.includes(term) || contentText.includes(term);
                 if (matches) {
                     const targets = [];
@@ -899,13 +952,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Ctrl+E: edit the command row whose id is typed in the search box,
-        // otherwise the row under the focused copy button, and for a focused
-        // heading keep the whole-section edit.
+        // Ctrl+E: edit the command row whose id is typed in the search box
+        // (":10" or, when no text matches it, "10"), otherwise the row under
+        // the focused copy button, and for a focused heading keep the whole
+        // section edit.
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'e' || e.key === 'E')) {
             e.preventDefault();
             const byId = getBlockById(searchInput.value);
             if (byId) { editBlockAt(byId); return; }
+            const rowFromQuery = resolveIdForEdit(searchInput.value);
+            if (rowFromQuery) { editBlockAt(rowFromQuery); return; }
             if (active && active !== searchInput) {
                 const row = active.closest('#content .cmd-row');
                 if (row) { editBlockAt(row); return; }
@@ -950,13 +1006,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Enter in the search box jumps to that command's copy button (when the
-    // query is an exact command id), otherwise to the first visible button.
+    // query is an explicit ":10" id, or a plain number that isn't a live text
+    // match but is a valid command id), otherwise to the first visible button.
     searchInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const byId = getBlockById(searchInput.value);
-            if (byId) {
-                const btn = byId.querySelector('.copy-btn');
+            const q = searchInput.value.trim();
+
+            const byId = getBlockById(q);
+            const stat = findRowForStat(q);
+            const targetId = byId || stat;
+            if (targetId) {
+                const btn = targetId.querySelector('.copy-btn');
                 if (btn) {
                     try { btn.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
                     btn.focus();
