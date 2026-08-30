@@ -116,6 +116,24 @@ code {
     pointer-events: none;
 }
 
+/* هایلایت ردیفی که در حالت ID با «:شماره» پیدا شده است (برای تأیید قبل از Ctrl+E) */
+.cmd-row.id-target-highlight {
+    background: rgba(76, 175, 80, 0.10);
+    outline: 2px solid rgba(76, 175, 80, 0.55);
+    outline-offset: -2px;
+    border-radius: 6px;
+}
+
+.cmd-row.id-target-highlight .cmd-id {
+    color: #4caf50;
+    background: #1c3121;
+    border-color: #4caf50;
+}
+
+.cmd-row.id-target-highlight .copy-btn {
+    border-color: #4caf50;
+}
+
 /* دکمه کپی: مقابل هر دستور، وسط همان ردیف، جایگاه ثابت */
 .copy-btn {
     position: absolute;

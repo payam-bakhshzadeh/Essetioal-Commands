@@ -12,13 +12,13 @@
     <!-- Search bar: always visible, typing anywhere focuses it -->
     <div id="terminal-search">
         <div class="terminal-header">
-            <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · Enter copies</span>
+            <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · :N + Enter edits</span>
             <span id="search-count">0 sections</span>
         </div>
         <div class="terminal-body">
             <span class="prompt">></span>
             <input type="text" id="search-input"
-                placeholder="Type to search titles, commands &amp; comments…  e.g. 5 or :5 + Ctrl+E edits that command · Tab / ↑↓ to switch · Enter to copy · Esc to clear"
+                placeholder="Type to search titles, commands &amp; comments…  «:5» finds &amp; highlights command 5 · Ctrl+E or Enter edits it · plain text + Enter copies · Esc to clear"
                 autocomplete="off" />
         </div>
     </div>

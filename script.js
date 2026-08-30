@@ -483,15 +483,50 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     function filterItems(query) {
         clearHighlights();
+        // clear any previous id-target highlight
+        content.querySelectorAll('.cmd-row.id-target-highlight').forEach(r => r.classList.remove('id-target-highlight'));
         const units = collectUnits(content);
         const q = (query || '').trim();
-        // An explicit id query (":10") is not a text search.
-        if (parseIdQuery(q) !== null) {
-            units.forEach(u => setUnitVisible(u, false));
-            searchCount.textContent = `0 / ${units.length} sections`;
-            console.log('filterItems (id query, no text filter)', JSON.stringify(q));
+
+        // Live id-search mode. ":" alone keeps EVERYTHING visible (nothing is
+        // hidden, since ':' isn't inside any text). As soon as digits follow
+        // (":145") only the sections that contain a matching id stay visible
+        // and every matching row is highlighted, so the user can confirm the
+        // exact command before pressing Ctrl+E or Enter.
+        if (q.startsWith(':')) {
+            const rest = q.slice(1).trim();
+            if (rest === '') {
+                units.forEach(u => setUnitVisible(u, true));
+                searchCount.textContent = `${units.length} / ${units.length} sections`;
+                console.log('filterItems (id mode, waiting for number)', JSON.stringify(q));
+                return;
+            }
+            let visible = 0;
+            let firstRow = null;
+            units.forEach(u => {
+                let unitMatch = false;
+                u.body.forEach(el => {
+                    if (!el.classList || !el.classList.contains('code-block')) return;
+                    el.querySelectorAll('.cmd-row').forEach(row => {
+                        const id = row.getAttribute('data-command-id') || '';
+                        if (id.startsWith(rest)) {
+                            unitMatch = true;
+                            row.classList.add('id-target-highlight');
+                            if (!firstRow) firstRow = row;
+                        }
+                    });
+                });
+                setUnitVisible(u, unitMatch);
+                if (unitMatch) visible++;
+            });
+            searchCount.textContent = `${visible} / ${units.length} sections`;
+            console.log('filterItems (id mode)', JSON.stringify(q), 'visible:', visible);
+            if (firstRow) {
+                try { firstRow.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
+            }
             return;
         }
+
         const term = q.toLowerCase();
         let visible = 0;
 
@@ -1005,28 +1040,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Enter in the search box jumps to that command's copy button (when the
-    // query is an explicit ":10" id, or a plain number that isn't a live text
-    // match but is a valid command id), otherwise to the first visible button.
+    // Enter in the search box:
+    //   ":N"               -> same action as Ctrl+E: open the editor for that id
+    //   plain number/text  -> jump to that command's copy button (or the first
+    //                         visible one), as before.
     searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const q = searchInput.value.trim();
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = searchInput.value.trim();
 
-            const byId = getBlockById(q);
-            const stat = findRowForStat(q);
-            const targetId = byId || stat;
-            if (targetId) {
-                const btn = targetId.querySelector('.copy-btn');
-                if (btn) {
-                    try { btn.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
-                    btn.focus();
-                    return;
-                }
-            }
-            focusFirstCopyButton();
+        const idQuery = parseIdQuery(q);
+        if (idQuery !== null) {
+            const row = content.querySelector(`.cmd-row[data-command-id="${idQuery}"]`);
+            if (row) editBlockAt(row);
+            return;
         }
-    });
+
+        const stat = findRowForStat(q);
+        if (stat) {
+            const btn = stat.querySelector('.copy-btn');
+            if (btn) {
+                try { btn.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
+                btn.focus();
+                return;
+            }
+        }
+        focusFirstCopyButton();
+    }
+});
 
     // Live filtering as the user types.
     searchInput.addEventListener('input', debounce((e) => {
