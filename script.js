@@ -322,6 +322,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const seen = new Map();
         units.forEach(unit => {
             const headingText = unit.heading ? unit.heading.textContent.trim() : '(untitled)';
+            // Sections the user created keep their stable storage key even when
+            // the title is edited, so edits/deletes always match the store.
+            const existingKey = unit.heading
+                ? unit.heading.getAttribute('data-section-key')
+                : (unit.body[0] ? unit.body[0].getAttribute('data-section-key') : null);
+            if (existingKey && existingKey.startsWith('custom-')) {
+                if (unit.heading) unit.heading.setAttribute('data-section-key', existingKey);
+                unit.body.forEach(el => el.setAttribute('data-section-key', existingKey));
+                return;
+            }
             const slug = slugify(headingText);
             const n = seen.get(slug) || 0;
             seen.set(slug, n + 1);
@@ -674,11 +684,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function replaceSectionDom(key, model) {
         const els = Array.from(content.querySelectorAll(`[data-section-key="${key}"]`));
-        if (els.length === 0) return;
+        if (els.length === 0) return null;
         const first = els[0];
         const frag = renderSection(key, model.title, model.commands);
         first.parentNode.insertBefore(frag, first);
         els.forEach(el => el.remove());
+        return frag.querySelector('h2');
     }
 
     // localStorage with an in-memory fallback (e.g. file:// with blocked storage)
@@ -711,9 +722,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Replace edited static sections (custom ones are handled below).
+        // A renamed section's stored key no longer matches the HTML-derived
+        // key, so fall back to matching by the edited title.
         Object.entries(edits).forEach(([key, model]) => {
             if (deleted.has(key) || customKeys.has(key)) return;
-            replaceSectionDom(key, model);
+            let targetKey = key;
+            if (!content.querySelector(`[data-section-key="${key}"]`)) {
+                const h = Array.from(content.querySelectorAll('h2')).find(el =>
+                    el.textContent.trim().toLowerCase() === String(model.title).trim().toLowerCase());
+                if (h) targetKey = h.getAttribute('data-section-key');
+            }
+            replaceSectionDom(targetKey, model);
         });
 
         // Append sections the user created, applying any edit for them.
@@ -794,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (mode === 'editBlock' && key && modalBlockIndex !== null) {
             const model = getSectionModel(key);
-            modalHeading.disabled = true;
+            modalHeading.title = 'You can also edit the section title here';
             modalHeading.value = model.title;
             modalCommands.value = model.commands[modalBlockIndex] || '';
             modalTitleEl.textContent = 'Edit command';
@@ -838,13 +857,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function saveModal() {
         const blocks = parseBlocks(modalCommands.value);
+        // When a section's title changes, its storage key can change too (we
+        // track the actual heading element so re-keying stays exact even if
+        // titles collide). Custom sections keep their stable key.
+        let retitleHeading = null;
+
         if (modalMode === 'editBlock' && modalKey && modalBlockIndex !== null) {
             const model = getSectionModel(modalKey);
             if (model.commands.length === 0) return;
             if (blocks.length === 0) { closeModal(); return; }
+
+            const newTitle = modalHeading.value.trim();
+            if (!newTitle) {
+                modalHeading.value = model.title;
+                modalHeading.focus();
+                return;
+            }
+            const titleChanged = newTitle !== model.title;
+            if (titleChanged) model.title = newTitle;
             model.commands.splice(modalBlockIndex, 1, ...blocks);
+
+            const store = getStore();
+            const isCustom = (store.custom || []).some(m => m.key === modalKey);
+
             saveModel(modalKey, model);
-            replaceSectionDom(modalKey, model);
+            const newHeading = replaceSectionDom(modalKey, model);
+
+            if (!isCustom && titleChanged) {
+                delete (store.edits || {})[modalKey];
+                saveStore(store);
+                retitleHeading = newHeading;
+            }
         } else {
             const title = modalHeading.value.trim();
             if (!title) {
@@ -852,8 +895,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (modalMode === 'edit' && modalKey) {
+                const oldTitle = (getSectionModel(modalKey) || {}).title;
+                const titleChanged = title !== oldTitle;
                 saveModel(modalKey, { title, commands: blocks });
-                replaceSectionDom(modalKey, { title, commands: blocks });
+                const newHeading = replaceSectionDom(modalKey, { title, commands: blocks });
+
+                if (titleChanged) {
+                    const store = getStore();
+                    const isCustom = (store.custom || []).some(m => m.key === modalKey);
+                    if (!isCustom) {
+                        delete (store.edits || {})[modalKey];
+                        saveStore(store);
+                        retitleHeading = newHeading;
+                    }
+                }
             } else {
                 const key = `custom-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
                 const store = getStore();
@@ -863,7 +918,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 content.appendChild(renderSection(key, title, blocks));
             }
         }
+
         afterContentChange();
+
+        if (retitleHeading) {
+            const newKey = retitleHeading.getAttribute('data-section-key');
+            if (newKey) saveModel(newKey, getSectionModel(newKey));
+        }
+
         closeModal();
     }
 
