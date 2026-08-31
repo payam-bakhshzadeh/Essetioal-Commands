@@ -13,13 +13,24 @@
     <div id="terminal-search">
         <div class="terminal-header">
             <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · :N + Enter edits</span>
-            <span id="search-count">0 sections</span>
+            <span class="terminal-tools">
+                <span id="search-count">0 sections</span>
+                <button id="select-toggle" class="header-btn" type="button" data-select-ui aria-pressed="false" title="Select mode: tick commands, then delete them all at once">Select mode</button>
+            </span>
         </div>
         <div class="terminal-body">
             <span class="prompt">></span>
             <input type="text" id="search-input"
                 placeholder="Type to search titles, commands &amp; comments…  «:5» finds &amp; highlights command 5 · Ctrl+E or Enter edits it · plain text + Enter copies · Esc to clear"
                 autocomplete="off" />
+        </div>
+
+        <!-- Bulk-select bar: appears when Select mode is turned on -->
+        <div id="select-bar" class="hidden">
+            <label class="select-all-label"><input type="checkbox" id="select-all" data-select-ui /><span>Select all</span></label>
+            <span id="select-info">0 selected</span>
+            <button id="delete-selected" class="modal-btn danger" type="button" disabled data-select-ui>Delete selected</button>
+            <button id="select-cancel" class="modal-btn" type="button" data-select-ui>Exit select</button>
         </div>
     </div>
 

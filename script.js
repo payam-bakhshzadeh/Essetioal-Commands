@@ -139,6 +139,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalCancel = document.getElementById('modal-cancel');
     const modalClose = document.getElementById('modal-close');
 
+    // Bulk-select UI (optional in the HTML). Guarded with selectUi so the
+    // rest of the app keeps working if these elements are missing.
+    const selectToggle = document.getElementById('select-toggle');
+    const selectBar = document.getElementById('select-bar');
+    const selectAllInput = document.getElementById('select-all');
+    const selectInfo = document.getElementById('select-info');
+    const deleteSelectedBtn = document.getElementById('delete-selected');
+    const selectCancel = document.getElementById('select-cancel');
+    const selectUi = !!(selectToggle && selectBar && selectAllInput && selectInfo && deleteSelectedBtn && selectCancel);
+
     if (!content || !searchInput || !searchCount || !editorModal ||
         !modalHeading || !modalCommands || !modalSave || !modalDelete) {
         console.error('Required elements not found', { content, searchInput, searchCount, editorModal });
@@ -584,24 +594,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function getTabTargets() {
+        // In select mode Tab cycles through the row checkboxes and the copy
+        // buttons together (document order); otherwise only the copy buttons.
+        if (isSelectMode()) {
+            return Array.from(content.querySelectorAll('.select-checkbox, .copy-btn'))
+                .filter(isActuallyVisible);
+        }
+        return getVisibleCopyButtons();
+    }
+
     function handleTab(shiftKey) {
-        const btns = getVisibleCopyButtons();
-        if (btns.length === 0) return;
+        const targets = getTabTargets();
+        if (targets.length === 0) return;
         const active = document.activeElement;
-        const idx = btns.indexOf(active);
+        const idx = targets.indexOf(active);
 
         if (shiftKey) {
             if (idx <= 0) {
                 searchInput.focus();
             } else {
-                btns[idx - 1].focus();
+                targets[idx - 1].focus();
             }
         } else {
             if (idx === -1) {
-                btns[0].focus();
+                targets[0].focus();
             } else {
-                btns[(idx + 1) % btns.length].focus();
+                targets[(idx + 1) % targets.length].focus();
             }
+        }
+    }
+
+    function moveSelectCheckboxFocus(step) {
+        const boxes = Array.from(content.querySelectorAll('.select-checkbox')).filter(isActuallyVisible);
+        if (boxes.length === 0) return;
+        const active = document.activeElement;
+        const idx = boxes.indexOf(active);
+        if (idx === -1) {
+            (step === 1 ? boxes[0] : boxes[boxes.length - 1]).focus();
+        } else {
+            boxes[(idx + step + boxes.length) % boxes.length].focus();
         }
     }
 
@@ -850,9 +882,11 @@ document.addEventListener('DOMContentLoaded', () => {
         assignSectionKeys();
         ensureCopyButtons();
         ensureCommandIdBadges();
+        ensureRowCheckboxes();
         normalizeCodeBlocks();
         assignCommandIds();
         filterItems(searchInput.value);
+        if (selectUi) updateSelectUI();
     }
 
     function saveModal() {
@@ -1012,6 +1046,154 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
+    // Bulk select: tick commands anywhere in the project, then delete them
+    // all at once. Sections that become empty are removed, same as the
+    // single-row delete.
+    // ------------------------------------------------------------------
+    function isSelectMode() {
+        return document.body.classList.contains('selecting');
+    }
+
+    function ensureRowCheckboxes(root = content) {
+        root.querySelectorAll('.cmd-row').forEach(row => {
+            if (row.querySelector('.select-checkbox')) return;
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'select-checkbox';
+            cb.setAttribute('data-select-ui', '');
+            cb.setAttribute('aria-label', 'Select this command for deletion');
+            row.insertBefore(cb, row.firstChild);
+        });
+    }
+
+    function updateSelectUI() {
+        // Selections only make sense for what is currently visible: when a
+        // search filter hides a section, its ticks are cleared so "Select
+        // all" and "Delete selected" always affect exactly what the user sees.
+        content.querySelectorAll('.cmd-row.selected').forEach(row => {
+            if (!isActuallyVisible(row)) {
+                const cb = row.querySelector('.select-checkbox');
+                if (cb) cb.checked = false;
+                row.classList.remove('selected');
+            }
+        });
+
+        const rows = Array.from(content.querySelectorAll('.cmd-row'));
+        const visible = rows.filter(isActuallyVisible);
+        const selected = rows.filter(r => r.classList.contains('selected'));
+        const selVisible = selected.filter(isActuallyVisible);
+        selectInfo.textContent = `${selected.length} selected`;
+        deleteSelectedBtn.disabled = selected.length === 0;
+        if (visible.length > 0 && selVisible.length === visible.length) {
+            selectAllInput.checked = true;
+            selectAllInput.indeterminate = false;
+        } else if (selVisible.length === 0) {
+            selectAllInput.checked = false;
+            selectAllInput.indeterminate = false;
+        } else {
+            selectAllInput.indeterminate = true;
+        }
+    }
+
+    function clearSelectionState() {
+        content.querySelectorAll('.select-checkbox').forEach(cb => { cb.checked = false; });
+        content.querySelectorAll('.cmd-row.selected').forEach(r => r.classList.remove('selected'));
+    }
+
+    function enterSelectMode() {
+        document.body.classList.add('selecting');
+        selectBar.classList.remove('hidden');
+        selectToggle.setAttribute('aria-pressed', 'true');
+        selectToggle.textContent = 'Exit select';
+        updateSelectUI();
+    }
+
+    function exitSelectMode(clearSelection = true) {
+        document.body.classList.remove('selecting');
+        selectBar.classList.add('hidden');
+        selectToggle.setAttribute('aria-pressed', 'false');
+        selectToggle.textContent = 'Select mode';
+        if (clearSelection) clearSelectionState();
+        updateSelectUI();
+    }
+
+    function deleteSelectedRows() {
+        const rows = Array.from(content.querySelectorAll('.cmd-row.selected'));
+        if (rows.length === 0) return;
+        const msg = rows.length === 1
+            ? 'Delete this selected command?'
+            : `Delete these ${rows.length} selected commands?\n\nSections that become empty will be removed too.`;
+        if (!confirm(msg)) return;
+
+        // Group by the code-block each selected row lives in (one block == one
+        // section in this app), then splice the rows from the stored model.
+        const byBlock = new Map();
+        rows.forEach(row => {
+            const block = row.closest('.code-block');
+            if (!block) return;
+            if (!byBlock.has(block)) byBlock.set(block, []);
+            byBlock.get(block).push(row);
+        });
+
+        byBlock.forEach((selRows, block) => {
+            const key = block.getAttribute('data-section-key');
+            if (!key) return;
+            const allRows = Array.from(block.querySelectorAll('.cmd-row'));
+            const idxs = selRows
+                .map(r => allRows.indexOf(r))
+                .filter(i => i !== -1)
+                .sort((a, b) => b - a);
+            if (idxs.length === 0) return;
+            const model = getSectionModel(key);
+            if (!model || !Array.isArray(model.commands)) return;
+            idxs.forEach(i => model.commands.splice(i, 1));
+            if (model.commands.length === 0) {
+                deleteSection(key);
+            } else {
+                saveModel(key, model);
+                replaceSectionDom(key, model);
+            }
+        });
+
+        clearSelectionState();
+        afterContentChange();
+        searchInput.focus();
+    }
+
+    function initSelectFeature() {
+        if (!selectUi) return;
+
+        selectToggle.addEventListener('click', () => {
+            if (isSelectMode()) exitSelectMode();
+            else enterSelectMode();
+        });
+
+        selectCancel.addEventListener('click', () => exitSelectMode(true));
+
+        selectAllInput.addEventListener('change', () => {
+            const on = selectAllInput.checked;
+            content.querySelectorAll('.cmd-row').forEach(row => {
+                if (!isActuallyVisible(row)) return;
+                const cb = row.querySelector('.select-checkbox');
+                if (!cb) return;
+                cb.checked = on;
+                row.classList.toggle('selected', on);
+            });
+            updateSelectUI();
+        });
+
+        deleteSelectedBtn.addEventListener('click', deleteSelectedRows);
+
+        // A tick anywhere in the content updates the row state + the header.
+        content.addEventListener('change', (e) => {
+            if (!e.target.classList || !e.target.classList.contains('select-checkbox')) return;
+            const row = e.target.closest('.cmd-row');
+            if (row) row.classList.toggle('selected', e.target.checked);
+            updateSelectUI();
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Global key handling
     // ------------------------------------------------------------------
     document.addEventListener('keydown', (e) => {
@@ -1019,11 +1201,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!editorModal.classList.contains('hidden')) return;
 
         const active = document.activeElement;
+        const onSelectControl = !!(active && active.matches('[data-select-ui]'));
 
         // Typing a printable character (outside the search box) focuses the
         // search box and types there. Composition keys just move focus.
         if (active !== searchInput && !e.ctrlKey && !e.altKey && !e.metaKey) {
             if (isTypingKey(e)) {
+                // Space on a select-mode checkbox/button toggles it instead
+                // of typing a space into the search box.
+                if (onSelectControl && e.key === ' ') return;
                 e.preventDefault();
                 insertIntoSearch(e.key);
                 return;
@@ -1036,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Backspace pressed anywhere outside the search box (e.g. after
         // clicking a copy button) deletes inside the search box instead.
-        if (e.key === 'Backspace' && active !== searchInput) {
+        if (e.key === 'Backspace' && active !== searchInput && !onSelectControl) {
             e.preventDefault();
             backspaceInSearch();
             return;
@@ -1078,19 +1264,28 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Tab / Shift+Tab cycles only through the visible copy buttons.
-        if (e.key === 'Tab') {
+        // Tab / Shift+Tab cycles through the visible copy buttons (and, in
+        // select mode, the row checkboxes too). The select-mode controls
+        // keep their native tab order.
+        if (e.key === 'Tab' && !onSelectControl) {
             e.preventDefault();
             handleTab(e.shiftKey);
             return;
         }
 
-        // ArrowUp / ArrowDown move between copy buttons once one is focused.
-        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp')
-            && active && active.classList.contains('copy-btn')) {
-            e.preventDefault();
-            moveCopyFocus(e.key === 'ArrowDown' ? 1 : -1);
-            return;
+        // ArrowUp / ArrowDown move between copy buttons (or, in select mode,
+        // between the row checkboxes) once one of them is focused.
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (active && active.classList.contains('copy-btn')) {
+                e.preventDefault();
+                moveCopyFocus(e.key === 'ArrowDown' ? 1 : -1);
+                return;
+            }
+            if (isSelectMode() && active && active.classList.contains('select-checkbox')) {
+                e.preventDefault();
+                moveSelectCheckboxFocus(e.key === 'ArrowDown' ? 1 : -1);
+                return;
+            }
         }
 
         // Escape: back to the search box, or clear it if already focused.
@@ -1134,6 +1329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Live filtering as the user types.
     searchInput.addEventListener('input', debounce((e) => {
         filterItems(e.target.value);
+        if (selectUi) updateSelectUI();
     }, 80));
 
     function debounce(fn, wait = 80) {
@@ -1155,5 +1351,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ensureCopyButtons();
     applyStoreToDom();
     afterContentChange();
+    initSelectFeature();
     searchInput.focus();
 });

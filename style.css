@@ -118,20 +118,20 @@ code {
 
 /* هایلایت ردیفی که در حالت ID با «:شماره» پیدا شده است (برای تأیید قبل از Ctrl+E) */
 .cmd-row.id-target-highlight {
-    background: rgba(76, 175, 80, 0.10);
-    outline: 2px solid rgba(76, 175, 80, 0.55);
+    background: rgba(132, 19, 169, 0.10);
+    outline: 2px solid rgba(132, 19, 169, 0.55);
     outline-offset: -2px;
     border-radius: 6px;
 }
 
 .cmd-row.id-target-highlight .cmd-id {
-    color: #4caf50;
-    background: #1c3121;
-    border-color: #4caf50;
+    color: #8413A9;
+    background: #1c0f26;
+    border-color: #8413A9;
 }
 
 .cmd-row.id-target-highlight .copy-btn {
-    border-color: #4caf50;
+    border-color: #8413A9;
 }
 
 /* دکمه کپی: مقابل هر دستور، وسط همان ردیف، جایگاه ثابت */
@@ -161,8 +161,8 @@ code {
 }
 
 .copy-btn.copied {
-    color: #4caf50;
-    border-color: #4caf50;
+    color: #8413A9;
+    border-color: #8413A9;
 }
 
 .copy-btn svg {
@@ -300,6 +300,7 @@ hr {
 
     .copy-btn,
     .cmd-id,
+    .select-checkbox,
     #terminal-search,
     #editor-modal {
         display: none !important;
@@ -450,4 +451,101 @@ mark.search-hit {
     background: #222222;
     color: #ffffff;
     border-color: #333333;
+}
+
+/* ===============================
+   SELECT MODE (tick multiple & delete at once)
+================================ */
+
+.terminal-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-btn {
+    background: #1a1a1a;
+    color: #888888;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.header-btn:hover,
+.header-btn:focus,
+.header-btn[aria-pressed="true"] {
+    color: #ffffff;
+    border-color: #8413A9;
+}
+
+.header-btn[aria-pressed="true"] {
+    background: rgba(132, 19, 169, 0.12);
+    border-color: #8413A9;
+}
+
+#select-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 16px;
+    border-top: 1px solid #222222;
+    background: #0d0d0d;
+    font-size: 12px;
+    color: #666666;
+}
+
+#select-bar.hidden {
+    display: none;
+}
+
+.select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #888888;
+}
+
+#select-bar input[type="checkbox"],
+.select-checkbox {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #8413A9;
+    cursor: pointer;
+}
+
+#select-info {
+    color: #8413A9;
+}
+
+#select-bar .modal-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+}
+
+/* چک‌باکس هر ردیف؛ فقط در حالت Select دیده می‌شود */
+.select-checkbox {
+    flex: 0 0 auto;
+    display: none;
+    margin: 4px 0 0;
+}
+
+body.selecting .select-checkbox {
+    display: block;
+}
+
+.cmd-row.selected {
+    background: rgba(132, 19, 169, 0.10);
+}
+
+.cmd-row.selected .cmd-id,
+.cmd-row.selected .copy-btn {
+    border-color: #8413A9;
 }
