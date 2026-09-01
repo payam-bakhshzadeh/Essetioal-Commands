@@ -62,7 +62,9 @@ function findCommentStart(line) {
 
 // Build the innerHTML of .cmd-lines from the raw command text: one .ln span
 // per physical line; a full-line comment gets .comment-line (extra spacing);
-// the comment part of any line is wrapped in <span class="comment">.
+// an inline (trailing) comment is displayed on its own line ABOVE its code
+// line. Copy text is unaffected: getRowCommandText strips .comment spans and
+// drops lines that become empty, so only the raw commands are copied.
 function buildCommandHtml(text) {
     return String(text || '')
         .split(/\r?\n/)
@@ -73,7 +75,10 @@ function buildCommandHtml(text) {
             if (cmd.trim() === '') {
                 return `<span class="ln comment-line"><span class="comment">${escapeHtml(line)}</span></span>`;
             }
-            return `<span class="ln">${escapeHtml(cmd)}<span class="comment">${escapeHtml(line.slice(idx))}</span></span>`;
+            // Inline comment: render the comment line first, then the code
+            // line. The embedded \n keeps lines.textContent faithful so
+            // re-normalisation (normalizeCodeBlocks) stays stable.
+            return `<span class="ln comment-line"><span class="comment">${escapeHtml(line.slice(idx))}</span></span>\n<span class="ln">${escapeHtml(cmd)}</span>`;
         })
         .join('\n');
 }
