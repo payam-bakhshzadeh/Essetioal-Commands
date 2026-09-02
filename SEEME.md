@@ -1,12 +1,19 @@
-- This is a app for save essential commands and search so fast. 
-- This app is based on Keyaboard. (Shortcut Keys)
-- ADD NEW ITEM:
-    - Ctrl + I => Title, Codes (will be inside of code block) and be able to add `# Comments` for each command.
-    - 1×Enter: Edame satr gabli khahad bud. (eyne narmafazare iA Writer ke ba 1 Enter text ro da edame text gabli minevisad.)
-    - 2 × ENTER: Yek satr va command jadid ke az command gabli jopda hastesh o mitavn # cooment joda set kard.
-- EDIT:
-    - Search Box: :ID + Enter
-    - Bara edit kardan bayad bar asase ID har command aval search kard bad Enter zad.
-    - WARRNING: Age gasd edit darid o mikhahid bar asase ID search konid hatman bayad gable ID alamate `:` garar dahid. Chon shayad
-                dakhele code ham add bashe , pas nabayad gati beshan.
-    - SUMMERY: Search Box= :10 -> search ID , Search Box= 10 -> search text inside commands and comments.
+1. Edit=>  :ID + Enter || focus on note and press `Ctrl + E`
+2. New=> Ctrl + i
+3. Switch between notes=> TAB
+4. Note Structure=> Title= git
+		[code1]=>  git init
+					[ENTER]
+					{ENTER]
+		[code2]=> git add .
+					[ENTER]
+					{ENTER]
+		[code3]=> git commit -m "comment" ↓
+					[ENTER]
+					continue [code3]
+Description:
+	- baraye neveshat code badi bayad 2×ENTER zad(eyne iA Writer)
+	- age ye code tollani bud auto be satr badi mire. vali agar khastim dasti khodemun edame code ro tu satr badi 					benevisim  1×ENTER bayad zad. 
+
+5. Comment: Dar balaye sar har note mitavan ba `# + [space] + text` coment nevesht.
+6. Multi Note Selection: Dar gesmate bala samte rast yek button bename: `Select Mode` darim. aval bayad TRUE kard bad note haw ra entekhab va ba zadan kilid DELETE yekja pak kard.
