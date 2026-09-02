@@ -503,6 +503,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Search uses the same representation for user input and document text:
+    // case is ignored and common visual separators become spaces.
+    function normalizeSearchText(value) {
+        return String(value || '')
+            .toLocaleLowerCase()
+            .replace(/[-._\s\\/]+/g, ' ')
+            .trim();
+    }
+
+    function getSearchTokens(value) {
+        const normalized = normalizeSearchText(value);
+        return normalized ? normalized.split(' ').filter(Boolean) : [];
+    }
+
+    function matchesSearchTokens(text, tokens) {
+        if (tokens.length === 0) return true;
+        const availableTokens = getSearchTokens(text);
+        // AND semantics: every query token must match a document token.
+        // Prefix matching keeps results live while a word is being typed.
+        return tokens.every(token => availableTokens
+            .some(availableToken => availableToken.startsWith(token)));
+    }
+
     // ------------------------------------------------------------------
     // Filtering (smart search): matches titles, commands AND comments
     // ------------------------------------------------------------------
@@ -552,22 +575,22 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const term = q.toLowerCase();
+        const searchTokens = getSearchTokens(q);
         let visible = 0;
 
-        if (term === '') {
+        if (searchTokens.length === 0) {
             units.forEach(u => setUnitVisible(u, true));
             visible = units.length;
         } else {
             units.forEach(u => {
-                const title = u.heading ? u.heading.textContent.toLowerCase() : '';
-                const contentText = u.body.map(codeBlockText).join(' ').toLowerCase();
-                const matches = title.includes(term) || contentText.includes(term);
+                const title = u.heading ? u.heading.textContent : '';
+                const contentText = u.body.map(codeBlockText).join(' ');
+                const matches = matchesSearchTokens(`${title} ${contentText}`, searchTokens);
                 if (matches) {
                     const targets = [];
                     if (u.heading) targets.push(u.heading);
                     targets.push(...u.body);
-                    highlightTextInElements(targets, term);
+                    searchTokens.forEach(token => highlightTextInElements(targets, token));
                 }
                 setUnitVisible(u, matches);
                 if (matches) visible++;
