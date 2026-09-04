@@ -12,9 +12,10 @@
     <!-- Search bar: always visible, typing anywhere focuses it -->
     <div id="terminal-search">
         <div class="terminal-header">
-            <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · :N + Enter edits</span>
+            <span>Search · Ctrl+I new section · Ctrl+E edit command · Del delete section · :N + Enter edits · Ctrl+← hide section · Ctrl+→ show section · Ctrl+Shift+← hide all · Ctrl+Shift+→ show all</span>
             <span class="terminal-tools">
                 <span id="search-count">0 sections</span>
+                <button id="collapse-all-btn" class="header-btn collapse-toggle" type="button" title="Hide all commands (Ctrl+Shift+ArrowLeft)" aria-label="Hide all commands"></button>
                 <button id="select-toggle" class="header-btn" type="button" data-select-ui aria-pressed="false" title="Select mode: tick commands, then delete them all at once">Select mode</button>
             </span>
         </div>

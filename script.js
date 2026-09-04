@@ -21,6 +21,13 @@ console.log('script.js (keyboard-first search + command blocks) loading...');
 
 const copyIcon = `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
 const checkIcon = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+// Small purple caret shown at the end of a section title while a section is
+// expanded (points down). It is rotated 90deg via CSS when collapsed.
+const sectionCaretIcon = `<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
+// Header toggle icons: double chevrons that mirror the Ctrl+Shift+Left
+// (hide all) and Ctrl+Shift+Right (show all) shortcuts.
+const collapseAllIcon = `<svg viewBox="0 0 24 24"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>`;
+const expandAllIcon = `<svg viewBox="0 0 24 24"><path d="M7 17l5-5-5-5M14 17l5-5-5-5"/></svg>`;
 
 const HEADING_RE = /^H[1-6]$/;
 // Elements treated as one indivisible search block (never descended into for
@@ -214,10 +221,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Is this element (or one of its ancestors up to #content) hidden by us?
+    // A `.code-block.collapsed` counts as hidden so the copy buttons inside a
+    // folded section drop out of Tab / arrow navigation.
     function isActuallyVisible(el) {
         let node = el;
         while (node && node !== content) {
             if (node.style && node.style.display === 'none') return false;
+            if (node.classList && node.classList.contains('code-block')
+                && node.classList.contains('collapsed')) return false;
             node = node.parentElement;
         }
         return true;
@@ -536,6 +547,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const units = collectUnits(content);
         const q = (query || '').trim();
 
+        // Search lifecycle for the auto-expand feature: the first real keystroke
+        // snapshots every section's collapsed state; when the query disappears
+        // (or resolves to nothing) the sections all go back to it.
+        if (q === '') {
+            restoreCollapsedSnapshot();
+        } else if (!searchCollapsedSnapshot) {
+            captureCollapsedSnapshot();
+        }
+
         // Live id-search mode. ":" alone keeps EVERYTHING visible (nothing is
         // hidden, since ':' isn't inside any text). As soon as digits follow
         // (":145") only the sections that contain a matching id stay visible
@@ -544,8 +564,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (q.startsWith(':')) {
             const rest = q.slice(1).trim();
             if (rest === '') {
-                units.forEach(u => setUnitVisible(u, true));
+                units.forEach(u => {
+                    setUnitVisible(u, true);
+                    applySnapshotToUnit(u);
+                });
                 searchCount.textContent = `${units.length} / ${units.length} sections`;
+                updateCollapseAllButton();
                 console.log('filterItems (id mode, waiting for number)', JSON.stringify(q));
                 return;
             }
@@ -565,9 +589,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
                 setUnitVisible(u, unitMatch);
-                if (unitMatch) visible++;
+                if (unitMatch) {
+                    applyCollapsedClass(unitKey(u), false);
+                    visible++;
+                } else {
+                    applySnapshotToUnit(u);
+                }
             });
             searchCount.textContent = `${visible} / ${units.length} sections`;
+            updateCollapseAllButton();
             console.log('filterItems (id mode)', JSON.stringify(q), 'visible:', visible);
             if (firstRow) {
                 try { firstRow.scrollIntoView({ block: 'nearest' }); } catch (err) { /* noop */ }
@@ -579,25 +609,36 @@ document.addEventListener('DOMContentLoaded', () => {
         let visible = 0;
 
         if (searchTokens.length === 0) {
-            units.forEach(u => setUnitVisible(u, true));
+            units.forEach(u => {
+                setUnitVisible(u, true);
+                applySnapshotToUnit(u);
+            });
             visible = units.length;
         } else {
             units.forEach(u => {
                 const title = u.heading ? u.heading.textContent : '';
                 const contentText = u.body.map(codeBlockText).join(' ');
                 const matches = matchesSearchTokens(`${title} ${contentText}`, searchTokens);
+                setUnitVisible(u, matches);
                 if (matches) {
+                    // A matched section is force-expanded so its highlighted
+                    // commands are actually visible while the search is live.
+                    applyCollapsedClass(unitKey(u), false);
                     const targets = [];
                     if (u.heading) targets.push(u.heading);
                     targets.push(...u.body);
                     searchTokens.forEach(token => highlightTextInElements(targets, token));
+                    visible++;
+                } else {
+                    // As the query narrows down, sections that drop out of the
+                    // results return to the state they had before the search.
+                    applySnapshotToUnit(u);
                 }
-                setUnitVisible(u, matches);
-                if (matches) visible++;
             });
         }
 
         searchCount.textContent = `${visible} / ${units.length} sections`;
+        updateCollapseAllButton();
         console.log('filterItems', JSON.stringify(q), 'visible:', visible, 'of', units.length);
     }
     window.filterItems = filterItems; // expose for console tests
@@ -623,13 +664,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getTabTargets() {
-        // In select mode Tab cycles through the row checkboxes and the copy
-        // buttons together (document order); otherwise only the copy buttons.
-        if (isSelectMode()) {
-            return Array.from(content.querySelectorAll('.select-checkbox, .copy-btn'))
-                .filter(isActuallyVisible);
-        }
-        return getVisibleCopyButtons();
+        // Tab cycles through the copy buttons in document order; a section
+        // that is collapsed has no visible copy buttons, so its title becomes
+        // the Tab target instead (so Ctrl+ArrowRight can expand it again).
+        // In select mode the row checkboxes are cycled together as before.
+        const sel = isSelectMode()
+            ? '.select-checkbox, .copy-btn, h2.collapsed'
+            : '.copy-btn, h2.collapsed';
+        return Array.from(content.querySelectorAll(sel)).filter(isActuallyVisible);
     }
 
     function handleTab(shiftKey) {
@@ -718,6 +760,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const h = document.createElement('h2');
         h.textContent = title;
         h.setAttribute('data-section-key', key);
+        addSectionHeaderChrome(h);
         frag.appendChild(h);
 
         const block = document.createElement('div');
@@ -768,6 +811,189 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             memoryStore = store;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Collapse / expand sections
+    // ------------------------------------------------------------------
+    // Makes a section title focusable (without putting it in the native tab
+    // order) and appends the tiny purple caret used as a focus / collapsed
+    // indicator. The caret is an SVG with no text nodes, so title text,
+    // searching and slug generation are unaffected.
+    function addSectionHeaderChrome(h) {
+        if (!h) return;
+        if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+        if (!h.querySelector('.collapse-icon')) {
+            const icon = document.createElement('span');
+            icon.className = 'collapse-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.innerHTML = sectionCaretIcon;
+            h.appendChild(icon);
+        }
+    }
+
+    function ensureSectionHeaderChromeAll(root = content) {
+        root.querySelectorAll('h2[data-section-key]').forEach(addSectionHeaderChrome);
+    }
+
+    function getHeadingByKey(key) {
+        return content.querySelector(`h2[data-section-key="${key}"]`);
+    }
+
+    function isSectionCollapsed(key) {
+        const h = getHeadingByKey(key);
+        return !!(h && h.classList.contains('collapsed'));
+    }
+
+    // Persist the folded-section keys so the layout survives a reload. Keys
+    // are recomputed from the live DOM each time, so deleted/renamed sections
+    // clean themselves up naturally.
+    function persistCollapsedKeys() {
+        const store = getStore();
+        store.collapsed = Array.from(content.querySelectorAll('h2.collapsed'))
+            .map(h => h.getAttribute('data-section-key'))
+            .filter(Boolean);
+        saveStore(store);
+    }
+
+    // Keep the header toggle button in sync: it shows a "hide all" icon while
+    // anything is expanded and flips to a "show all" icon when everything is
+    // already folded.
+    function updateCollapseAllButton() {
+        const btn = document.getElementById('collapse-all-btn');
+        if (!btn) return;
+        const total = content.querySelectorAll('h2[data-section-key]').length;
+        if (total === 0) {
+            btn.disabled = true;
+            return;
+        }
+        const folded = content.querySelectorAll('h2.collapsed').length;
+        if (folded === total) {
+            btn.title = 'Show all sections (Ctrl+Shift+ArrowRight)';
+            btn.setAttribute('aria-label', 'Show all sections');
+            btn.innerHTML = expandAllIcon;
+        } else {
+            btn.title = 'Hide all commands (Ctrl+Shift+ArrowLeft)';
+            btn.setAttribute('aria-label', 'Hide all commands');
+            btn.innerHTML = collapseAllIcon;
+        }
+    }
+
+    // Fold/unfold one section. `option.focus`: when collapsing, focus lands on
+    // the title (so the next Tab / Ctrl+ArrowRight still finds the section);
+    // when expanding, focus jumps to the section's first copy button.
+    // Toggle the collapsed class on a section without touching persistence or
+    // focus. Internal helper shared by collapse/expand and by the live-search
+    // auto-expand logic.
+    function applyCollapsedClass(key, collapsed) {
+        if (!key) return;
+        content.querySelectorAll(`[data-section-key="${key}"]`).forEach(el => {
+            if (el.classList.contains('code-block')) el.classList.toggle('collapsed', collapsed);
+            else if (HEADING_RE.test(el.tagName)) el.classList.toggle('collapsed', collapsed);
+        });
+    }
+
+    function setSectionCollapsed(key, collapsed, opts = {}) {
+        if (!key) return;
+        applyCollapsedClass(key, collapsed);
+        persistCollapsedKeys();
+        updateCollapseAllButton();
+        if (opts.focus) {
+            const h = getHeadingByKey(key);
+            if (!collapsed) {
+                const btn = content.querySelector(
+                    `[data-section-key="${key}"].code-block .copy-btn`
+                );
+                if (btn && isActuallyVisible(btn)) btn.focus();
+                else if (h) h.focus();
+            } else if (h) {
+                h.focus();
+            }
+        }
+    }
+
+    function collapseSection(key) { setSectionCollapsed(key, true, { focus: true }); }
+    function expandSection(key) { setSectionCollapsed(key, false, { focus: true }); }
+
+    function toggleSection(key) {
+        if (key) setSectionCollapsed(key, !isSectionCollapsed(key), { focus: true });
+    }
+
+    function collapseAllSections() {
+        content.querySelectorAll('h2[data-section-key]').forEach(h => {
+            setSectionCollapsed(h.getAttribute('data-section-key'), true);
+        });
+        searchInput.focus();
+    }
+
+    function expandAllSections() {
+        content.querySelectorAll('h2[data-section-key]').forEach(h => {
+            setSectionCollapsed(h.getAttribute('data-section-key'), false);
+        });
+        searchInput.focus();
+    }
+
+    function toggleAllSections() {
+        const total = content.querySelectorAll('h2[data-section-key]').length;
+        const folded = content.querySelectorAll('h2.collapsed').length;
+        if (folded === total) expandAllSections();
+        else collapseAllSections();
+    }
+
+    // Restore the saved folded state after any content change / re-render.
+    function applyCollapsedFromStore() {
+        const folded = new Set(getStore().collapsed || []);
+        content.querySelectorAll('h2[data-section-key]').forEach(h => {
+            const key = h.getAttribute('data-section-key');
+            if (folded.has(key)) setSectionCollapsed(key, true);
+        });
+        updateCollapseAllButton();
+    }
+
+    // ------------------------------------------------------------------
+    // Live-search auto-expand
+    // ------------------------------------------------------------------
+    // While the user is typing a real query, the sections that match are
+    // force-expanded so the highlighted matches are actually visible. Sections
+    // that stop matching go back to the state they had *before* the search
+    // started, and when the search is cleared every section returns to that
+    // state. All of this is transient - the persisted collapsed state in
+    // localStorage is never modified.
+    let searchCollapsedSnapshot = null;
+
+    function unitKey(unit) {
+        if (unit.heading) return unit.heading.getAttribute('data-section-key');
+        return unit.body.length ? unit.body[0].getAttribute('data-section-key') : null;
+    }
+
+    // First real keystroke: remember every section's collapsed state.
+    function captureCollapsedSnapshot() {
+        searchCollapsedSnapshot = {};
+        content.querySelectorAll('h2[data-section-key]').forEach(h => {
+            const key = h.getAttribute('data-section-key');
+            if (key) searchCollapsedSnapshot[key] = h.classList.contains('collapsed');
+        });
+    }
+
+    // Put one section back to its pre-search collapsed state (used for the
+    // sections that drop out of the results as the query narrows down).
+    function applySnapshotToUnit(unit) {
+        const snap = searchCollapsedSnapshot;
+        const key = unitKey(unit);
+        if (!snap || !key || !(key in snap)) return;
+        applyCollapsedClass(key, snap[key]);
+    }
+
+    // Search ended / cleared: restore every section to its pre-search state.
+    function restoreCollapsedSnapshot() {
+        const snap = searchCollapsedSnapshot;
+        if (!snap) return;
+        content.querySelectorAll('h2[data-section-key]').forEach(h => {
+            const key = h.getAttribute('data-section-key');
+            if (key && key in snap) applyCollapsedClass(key, snap[key]);
+        });
+        searchCollapsedSnapshot = null;
+        updateCollapseAllButton();
     }
 
     function applyStoreToDom() {
@@ -913,6 +1139,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ensureRowCheckboxes();
         normalizeCodeBlocks();
         assignCommandIds();
+        ensureSectionHeaderChromeAll();
+        applyCollapsedFromStore();
         filterItems(searchInput.value);
         if (selectUi) updateSelectUI();
     }
@@ -1224,6 +1452,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Global key handling
     // ------------------------------------------------------------------
+    // Clicking a section title toggles its collapse/expand state (mouse users).
+    content.addEventListener('click', (e) => {
+        const h = e.target.closest('#content h2[data-section-key]');
+        if (!h) return;
+        const key = h.getAttribute('data-section-key');
+        if (key) toggleSection(key);
+    });
+
     document.addEventListener('keydown', (e) => {
         // While the modal is open, it handles its own keys.
         if (!editorModal.classList.contains('hidden')) return;
@@ -1288,6 +1524,36 @@ document.addEventListener('DOMContentLoaded', () => {
             if (key) {
                 e.preventDefault();
                 if (confirm('Delete this section?')) deleteSection(key);
+            }
+            return;
+        }
+
+        // Enter on a section title toggles collapse/expand.
+        if (e.key === 'Enter' && active && active.matches('#content h2[data-section-key]')) {
+            e.preventDefault();
+            toggleSection(active.getAttribute('data-section-key'));
+            return;
+        }
+
+        // Collapse / expand a single section (Ctrl+ArrowLeft/Right) or the
+        // whole page (Ctrl+Shift+ArrowLeft = hide all, ArrowRight = show all).
+        if ((e.ctrlKey || e.metaKey) && !e.altKey
+            && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            if (e.shiftKey) {
+                e.preventDefault();
+                if (e.key === 'ArrowLeft') collapseAllSections();
+                else expandAllSections();
+                return;
+            }
+            // Plain Ctrl+Arrow keys are also the browser's cursor-jump / word
+            // navigation inside text inputs, so never steal them while the
+            // search box is focused.
+            if (active === searchInput) return;
+            e.preventDefault();
+            const key = getActiveSectionKey();
+            if (key) {
+                if (e.key === 'ArrowLeft') collapseSection(key);
+                else expandSection(key);
             }
             return;
         }
@@ -1380,5 +1646,12 @@ document.addEventListener('DOMContentLoaded', () => {
     applyStoreToDom();
     afterContentChange();
     initSelectFeature();
+
+    // Hide/show-all button in the search header: flips its icon between the
+    // "collapse all" and "expand all" states.
+    const collapseAllBtn = document.getElementById('collapse-all-btn');
+    if (collapseAllBtn) collapseAllBtn.addEventListener('click', toggleAllSections);
+    updateCollapseAllButton();
+
     searchInput.focus();
 });

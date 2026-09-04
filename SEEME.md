@@ -17,3 +17,7 @@ Description:
 
 5. Comment: Dar balaye sar har note mitavan ba `# + [space] + text` coment nevesht.
 6. Multi Note Selection: Dar gesmate bala samte rast yek button bename: `Select Mode` darim. aval bayad TRUE kard bad note haw ra entekhab va ba zadan kilid DELETE yekja pak kard.
+7. Collapse/Expand => Ctrl + ← collapse / Ctrl + → expand (provided that focus is on a copy button or the title of that note).
+8. Hide All/Show All notes => Ctrl + Shift + ← or the fold-icon button in the search bar / Ctrl + Shift + →.
+9. Mouse users can also click a title to fold/unfold it; when a note is folded, TAB can focus its title and Ctrl + → re-opens it.
+10. Live Search: while typing, any matching section auto-expands so you can see the highlighted match; when the search narrows or is cleared, sections return to the state they had before searching.

@@ -549,3 +549,95 @@ body.selecting .select-checkbox {
 .cmd-row.selected .copy-btn {
     border-color: #8413A9;
 }
+
+/* ===============================
+   COLLAPSE / EXPAND SECTIONS
+================================ */
+
+/* Section title: clickable + focusable, but never shows a default focus box */
+#content h2[data-section-key] {
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Hidden state: the whole code block folds away under the title */
+.code-block.collapsed {
+    display: none;
+}
+
+#content h2.collapsed {
+    color: #ffffff;
+    margin-bottom: 26px;
+}
+
+/* Minimal caret (SVG) at the end of the title, in the app's purple.
+   Invisible by default so the page stays clean; it appears only when the
+   heading is hovered/focused and it stays permanently visible on collapsed
+   sections so the user can tell at a glance which blocks are hidden. */
+#content h2 .collapse-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    margin-left: 8px;
+    vertical-align: middle;
+    color: #8413A9;
+    opacity: 0;
+    transform: rotate(0deg);
+    transition: opacity 0.15s ease, transform 0.2s ease, filter 0.15s ease;
+    pointer-events: none;
+}
+
+#content h2 .collapse-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#content h2:hover .collapse-icon,
+#content h2:focus .collapse-icon,
+#content h2.collapsed .collapse-icon {
+    opacity: 1;
+}
+
+/* Focus state: a subtle purple glow + slight grow instead of a focus box */
+#content h2:focus .collapse-icon {
+    filter: drop-shadow(0 0 6px rgba(132, 19, 169, 0.8));
+    transform: scale(1.2);
+}
+
+/* Collapsed sections show the caret rotated 90deg, i.e. pointing right
+   (the "still closed" / expandable affordance). */
+#content h2.collapsed .collapse-icon {
+    transform: rotate(90deg);
+}
+
+#content h2.collapsed:focus .collapse-icon {
+    transform: rotate(90deg) scale(1.2);
+}
+
+/* "Hide all / show all" icon button in the search bar */
+.collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 6px;
+    line-height: 1.4;
+}
+
+.collapse-toggle svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
